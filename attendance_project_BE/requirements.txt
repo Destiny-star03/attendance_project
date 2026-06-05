@@ -1,0 +1,15 @@
+opencv-python>=4.9.0
+ultralytics>=8.3.0
+numpy>=1.26.0
+torch>=2.2.0
+torchvision>=0.17.0
+tqdm>=4.67.0
+fastapi>=0.115.0
+uvicorn[standard]>=0.30.0
+python-multipart>=0.0.9
+
+# FaceNet face recognition backend.
+# Python 3.13 can conflict with facenet-pytorch's pinned torch/numpy/pillow versions.
+# Install it separately after the packages above:
+#   python -m pip install facenet-pytorch --no-deps
+# facenet-pytorch>=2.6.0

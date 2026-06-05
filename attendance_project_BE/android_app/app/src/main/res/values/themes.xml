@@ -1,0 +1,11 @@
+<?xml version="1.0" encoding="utf-8"?>
+<resources>
+    <style name="Theme.YonamAttendance" parent="Theme.MaterialComponents.DayNight.NoActionBar">
+        <item name="colorPrimary">@color/yonam_green</item>
+        <item name="colorPrimaryVariant">@color/yonam_green_dark</item>
+        <item name="colorSecondary">@color/yonam_blue</item>
+        <item name="android:fontFamily">sans</item>
+        <item name="android:windowLightStatusBar">false</item>
+        <item name="android:statusBarColor">@color/yonam_green_dark</item>
+    </style>
+</resources>

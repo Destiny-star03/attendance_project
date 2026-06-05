@@ -1,0 +1,9 @@
+<?xml version="1.0" encoding="utf-8"?>
+<resources>
+    <color name="yonam_green">#0B7A5A</color>
+    <color name="yonam_green_dark">#075B45</color>
+    <color name="yonam_blue">#0B5CAD</color>
+    <color name="surface">#F6F8FA</color>
+    <color name="text_primary">#17202A</color>
+    <color name="text_secondary">#5B6773</color>
+</resources>

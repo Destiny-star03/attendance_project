@@ -1,0 +1,33 @@
+# Python
+__pycache__/
+*.pyc
+venv/
+.venv/
+.env
+
+# Backend data
+attendance_project_BE/data/*.db
+attendance_project_BE/data/logs/
+*.csv
+*.hprof
+# AI model files
+attendance_project_BE/models/*.pt
+attendance_project_BE/models/*.onnx
+attendance_project_BE/models/*.tflite
+
+# Android
+attendance_yolo26_Front/.gradle/
+attendance_yolo26_Front/build/
+attendance_yolo26_Front/app/build/
+attendance_yolo26_Front/local.properties
+*.apk
+*.aab
+
+# IDE
+.idea/
+.vscode/
+*.iml
+
+# OS
+Thumbs.db
+.DS_Store*.hprof

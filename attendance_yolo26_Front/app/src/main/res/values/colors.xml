@@ -1,0 +1,12 @@
+﻿<?xml version="1.0" encoding="utf-8"?>
+<resources>
+    <color name="yonam_blue">#1565C0</color>
+    <color name="yonam_blue_dark">#0D47A1</color>
+    <color name="yonam_green">#2E7D32</color>
+    <color name="yonam_red">#C62828</color>
+    <color name="surface">#F5F7FA</color>
+    <color name="card_surface">#FFFFFF</color>
+    <color name="text_primary">#1F2937</color>
+    <color name="text_secondary">#5B6773</color>
+    <color name="divider">#E1E7EF</color>
+</resources>
