@@ -4,9 +4,11 @@ import com.google.gson.annotations.SerializedName
 
 data class EnrollStatusResponse(
     val success: Boolean? = null,
+    val status: String? = null,
     val message: String? = null,
     @SerializedName("enroll_id")
     val enrollId: String? = null,
+    val pose: String? = null,
     @SerializedName("student_no")
     val studentNo: String? = null,
     val name: String? = null,
@@ -17,5 +19,10 @@ data class EnrollStatusResponse(
     val completedPoses: List<String>? = null,
     @SerializedName("remaining_poses")
     val remainingPoses: List<String>? = null,
-    val progress: Double? = null
+    @SerializedName("next_pose")
+    val nextPose: String? = null,
+    val progress: Int? = null,
+    @SerializedName("ready_to_complete")
+    val readyToComplete: Boolean? = null,
+    val student: Student? = null
 )

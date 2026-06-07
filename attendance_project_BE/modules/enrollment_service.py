@@ -23,7 +23,7 @@ class EnrollmentSession:
 
 
 class EnrollmentService:
-    """실시간 얼굴 등록 세션을 메모리에서 관리한다."""
+    """실시간 다중 포즈 얼굴 등록 세션을 메모리에서 관리한다."""
 
     def __init__(
         self,
@@ -40,7 +40,7 @@ class EnrollmentService:
         name: str,
         department: str | None = None,
     ) -> dict[str, Any]:
-        """학생 정보와 필요한 pose 목록을 가진 등록 세션을 시작한다."""
+        """학생 정보와 필수 pose 목록을 가진 등록 세션을 시작한다."""
         self.cleanup_expired_sessions()
 
         normalized_student_no = student_no.strip()
@@ -63,17 +63,19 @@ class EnrollmentService:
 
         return {
             "success": True,
+            "status": "started",
             "message": "얼굴 등록 세션이 시작되었습니다.",
             "enroll_id": enroll_id,
-            "required_poses": list(session.required_poses),
+            **self._status_payload(session),
         }
 
     def add_frame(self, enroll_id: str, pose: str, embedding: np.ndarray) -> dict[str, Any]:
-        """pose별 최신 얼굴 임베딩을 저장하고 진행률을 반환한다."""
+        """pose별 최신 얼굴 임베딩을 저장하고 Android가 필요한 진행 상태를 반환한다."""
         session = self._get_active_session(enroll_id)
         if session is None:
             return {
                 "success": False,
+                "status": "invalid_enroll_id",
                 "message": "얼굴 등록 세션을 찾을 수 없습니다.",
                 "enroll_id": enroll_id,
             }
@@ -82,19 +84,38 @@ class EnrollmentService:
         if normalized_pose not in session.required_poses:
             return {
                 "success": False,
+                "status": "invalid_pose",
                 "message": "지원하지 않는 얼굴 방향입니다.",
                 "enroll_id": enroll_id,
                 "pose": normalized_pose,
-                "required_poses": list(session.required_poses),
+                **self._status_payload(session),
+            }
+
+        if normalized_pose in session.embeddings:
+            return {
+                "success": False,
+                "status": "already_completed",
+                "message": f"{normalized_pose} 얼굴 방향은 이미 등록되었습니다.",
+                "enroll_id": enroll_id,
+                "pose": normalized_pose,
+                **self._status_payload(session),
             }
 
         session.embeddings[normalized_pose] = self._normalize_embedding(embedding)
         session.updated_at = time.time()
 
         status = self._status_payload(session)
+        response_status = "ready_to_complete" if status["ready_to_complete"] else "accepted"
+        response_message = (
+            "모든 얼굴 방향 등록이 완료되었습니다."
+            if status["ready_to_complete"]
+            else f"{normalized_pose} 얼굴이 등록되었습니다."
+        )
+
         return {
             "success": True,
-            "message": f"{normalized_pose} 얼굴이 등록되었습니다.",
+            "status": response_status,
+            "message": response_message,
             "enroll_id": enroll_id,
             "pose": normalized_pose,
             **status,
@@ -106,17 +127,21 @@ class EnrollmentService:
         if session is None:
             return {
                 "success": False,
+                "status": "invalid_enroll_id",
                 "message": "얼굴 등록 세션을 찾을 수 없습니다.",
                 "enroll_id": enroll_id,
             }
 
+        status = self._status_payload(session)
         return {
             "success": True,
+            "status": "ready_to_complete" if status["ready_to_complete"] else "active",
+            "message": "등록 상태 조회 성공",
             "enroll_id": enroll_id,
             "student_no": session.student_no,
             "name": session.name,
             "department": session.department,
-            **self._status_payload(session),
+            **status,
         }
 
     def complete_enrollment(self, enroll_id: str) -> dict[str, Any]:
@@ -125,6 +150,7 @@ class EnrollmentService:
         if session is None:
             return {
                 "success": False,
+                "status": "invalid_enroll_id",
                 "message": "얼굴 등록 세션을 찾을 수 없습니다.",
                 "enroll_id": enroll_id,
             }
@@ -133,7 +159,8 @@ class EnrollmentService:
         if remaining_poses:
             return {
                 "success": False,
-                "message": "필수 얼굴 방향이 아직 모두 등록되지 않았습니다.",
+                "status": "incomplete",
+                "message": "아직 완료되지 않은 자세가 있습니다.",
                 "enroll_id": enroll_id,
                 **self._status_payload(session),
             }
@@ -144,6 +171,7 @@ class EnrollmentService:
 
         return {
             "success": True,
+            "status": "completed",
             "message": "얼굴 등록 임베딩 생성이 완료되었습니다.",
             "enroll_id": enroll_id,
             "student_no": session.student_no,
@@ -154,11 +182,12 @@ class EnrollmentService:
         }
 
     def cancel_enrollment(self, enroll_id: str) -> dict[str, Any]:
-        """임시 등록 세션을 삭제한다."""
+        """진행 중 등록 세션을 삭제한다."""
         self.cleanup_expired_sessions()
         removed = self._sessions.pop(enroll_id, None) is not None
         return {
             "success": removed,
+            "status": "cancelled" if removed else "invalid_enroll_id",
             "message": "얼굴 등록 세션이 취소되었습니다." if removed else "얼굴 등록 세션을 찾을 수 없습니다.",
             "enroll_id": enroll_id,
         }
@@ -168,7 +197,7 @@ class EnrollmentService:
         self._sessions.pop(enroll_id, None)
 
     def cleanup_expired_sessions(self) -> dict[str, Any]:
-        """마지막 갱신 시간이 timeout을 넘긴 세션을 제거한다."""
+        """마지막 갱신 이후 timeout이 지난 세션을 제거한다."""
         now = time.time()
         expired_ids = [
             enroll_id
@@ -208,7 +237,9 @@ class EnrollmentService:
             "required_poses": list(session.required_poses),
             "completed_poses": completed_poses,
             "remaining_poses": remaining_poses,
+            "next_pose": remaining_poses[0] if remaining_poses else None,
             "progress": self._progress(session),
+            "ready_to_complete": not remaining_poses,
         }
 
     @staticmethod

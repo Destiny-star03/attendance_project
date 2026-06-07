@@ -9,5 +9,8 @@ data class Student(
     val studentNo: String? = null,
     val name: String? = null,
     val department: String? = null,
+    @SerializedName("created_at")
+    val createdAt: String? = null,
+    val attendanceStatus: String? = null,
     val status: String? = null
 )

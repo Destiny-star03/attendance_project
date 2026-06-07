@@ -6,6 +6,8 @@ import kr.ac.yonam.attendance.model.ActiveSessionResponse
 import kr.ac.yonam.attendance.model.AttendanceListResponse
 import kr.ac.yonam.attendance.model.AttendanceResponse
 import kr.ac.yonam.attendance.model.CommonResponse
+import kr.ac.yonam.attendance.model.CreateSessionRequest
+import kr.ac.yonam.attendance.model.CreateSubjectRequest
 import kr.ac.yonam.attendance.model.EnrollCompleteResponse
 import kr.ac.yonam.attendance.model.EnrollFrameResponse
 import kr.ac.yonam.attendance.model.EnrollStartResponse
@@ -13,6 +15,11 @@ import kr.ac.yonam.attendance.model.EnrollStatusResponse
 import kr.ac.yonam.attendance.model.HealthResponse
 import kr.ac.yonam.attendance.model.SessionListResponse
 import kr.ac.yonam.attendance.model.StudentRegisterResponse
+import kr.ac.yonam.attendance.model.StudentStatsResponse
+import kr.ac.yonam.attendance.model.StudentsResponse
+import kr.ac.yonam.attendance.model.SubjectListResponse
+import kr.ac.yonam.attendance.model.SubjectResponse
+import kr.ac.yonam.attendance.model.SubjectStudentResponse
 import kr.ac.yonam.attendance.network.ApiClient
 import kr.ac.yonam.attendance.network.AttendanceApi
 import kr.ac.yonam.attendance.util.ImageUtil
@@ -55,6 +62,185 @@ class AttendanceRepository private constructor(
         return safeCall(
             call = { api.getAttendance(sessionId = sessionId, date = date) },
             fallback = { AttendanceListResponse(success = false, message = it) }
+        )
+    }
+
+    suspend fun getStudents(): StudentsResponse {
+        return try {
+            val response = api.getStudents()
+            if (response.isSuccessful) {
+                response.body() ?: StudentsResponse(
+                    success = false,
+                    message = "학생 목록 응답이 비어 있습니다."
+                )
+            } else {
+                StudentsResponse(
+                    success = false,
+                    message = "학생 목록을 불러오지 못했습니다. (HTTP ${response.code()})"
+                )
+            }
+        } catch (error: Exception) {
+            StudentsResponse(
+                success = false,
+                message = "학생 목록 조회 중 네트워크 오류가 발생했습니다: ${error.message ?: "알 수 없는 오류"}"
+            )
+        }
+    }
+
+    suspend fun getStudentStats(studentId: Int): StudentStatsResponse {
+        return try {
+            val response = api.getStudentStats(studentId)
+            if (response.isSuccessful) {
+                response.body() ?: StudentStatsResponse(
+                    success = false,
+                    message = "학생 통계 응답이 비어 있습니다."
+                )
+            } else {
+                StudentStatsResponse(
+                    success = false,
+                    message = "학생 통계를 불러오지 못했습니다. (HTTP ${response.code()})"
+                )
+            }
+        } catch (error: Exception) {
+            StudentStatsResponse(
+                success = false,
+                message = "학생 통계 조회 중 네트워크 오류가 발생했습니다: ${error.message ?: "알 수 없는 오류"}"
+            )
+        }
+    }
+
+    suspend fun getSubjects(): SubjectListResponse {
+        return safeCall(
+            call = { api.getSubjects() },
+            fallback = { SubjectListResponse(success = false, message = it, items = emptyList()) }
+        )
+    }
+
+    suspend fun createSubject(request: CreateSubjectRequest): SubjectResponse {
+        return safeCall(
+            call = { api.createSubject(request) },
+            fallback = { SubjectResponse(success = false, message = it) }
+        )
+    }
+
+    suspend fun createSubject(
+        subjectName: String,
+        professorName: String? = null,
+        classroom: String? = null
+    ): SubjectResponse {
+        return createSubject(
+            CreateSubjectRequest(
+                subjectName = subjectName,
+                professorName = professorName,
+                classroom = classroom
+            )
+        )
+    }
+
+    suspend fun getSubject(subjectId: Int): SubjectResponse {
+        return safeCall(
+            call = { api.getSubject(subjectId) },
+            fallback = { SubjectResponse(success = false, message = it) }
+        )
+    }
+
+    suspend fun updateSubject(
+        subjectId: Int,
+        request: CreateSubjectRequest
+    ): SubjectResponse {
+        return safeCall(
+            call = { api.updateSubject(subjectId, request) },
+            fallback = { SubjectResponse(success = false, message = it) }
+        )
+    }
+
+    suspend fun updateSubject(
+        subjectId: Int,
+        subjectName: String? = null,
+        professorName: String? = null,
+        classroom: String? = null
+    ): SubjectResponse {
+        return updateSubject(
+            subjectId = subjectId,
+            request = CreateSubjectRequest(
+                subjectName = subjectName,
+                professorName = professorName,
+                classroom = classroom
+            )
+        )
+    }
+
+    suspend fun deleteSubject(subjectId: Int): CommonResponse {
+        return safeCall(
+            call = { api.deleteSubject(subjectId) },
+            fallback = {
+                CommonResponse(
+                    success = false,
+                    status = "server_error",
+                    message = it,
+                    deleted = false
+                )
+            }
+        )
+    }
+
+    suspend fun getSubjectStudents(subjectId: Int): SubjectStudentResponse {
+        return safeCall(
+            call = { api.getSubjectStudents(subjectId) },
+            fallback = { SubjectStudentResponse(success = false, message = it, items = emptyList()) }
+        )
+    }
+
+    suspend fun addStudentToSubject(subjectId: Int, studentId: Int): CommonResponse {
+        return safeCall(
+            call = { api.addStudentToSubject(subjectId, studentId) },
+            fallback = {
+                CommonResponse(
+                    success = false,
+                    status = "server_error",
+                    message = it
+                )
+            }
+        )
+    }
+
+    suspend fun removeStudentFromSubject(subjectId: Int, studentId: Int): CommonResponse {
+        return safeCall(
+            call = { api.removeStudentFromSubject(subjectId, studentId) },
+            fallback = {
+                CommonResponse(
+                    success = false,
+                    status = "server_error",
+                    message = it,
+                    deleted = false
+                )
+            }
+        )
+    }
+
+    suspend fun createSubjectSession(
+        subjectId: Int,
+        request: CreateSessionRequest
+    ): ActiveSessionResponse {
+        return safeCall(
+            call = { api.createSubjectSession(subjectId, request) },
+            fallback = { ActiveSessionResponse(success = false, message = it) }
+        )
+    }
+
+    suspend fun createSubjectSession(
+        subjectId: Int,
+        classDate: String,
+        startTime: String? = null,
+        endTime: String? = null
+    ): ActiveSessionResponse {
+        return createSubjectSession(
+            subjectId = subjectId,
+            request = CreateSessionRequest(
+                classDate = classDate,
+                startTime = startTime,
+                endTime = endTime
+            )
         )
     }
 
@@ -112,7 +298,7 @@ class AttendanceRepository private constructor(
                     department = textPart(department.orEmpty())
                 )
             },
-            fallback = { EnrollStartResponse(success = false, message = it) }
+            fallback = { EnrollStartResponse(success = false, status = "server_error", message = it) }
         )
     }
 
@@ -132,7 +318,7 @@ class AttendanceRepository private constructor(
             fallback = {
                 EnrollFrameResponse(
                     success = false,
-                    status = "network_error",
+                    status = "server_error",
                     message = it,
                     enrollId = enrollId,
                     pose = pose
@@ -147,6 +333,7 @@ class AttendanceRepository private constructor(
             fallback = {
                 EnrollCompleteResponse(
                     success = false,
+                    status = "server_error",
                     message = it,
                     enrollId = enrollId
                 )
@@ -160,6 +347,7 @@ class AttendanceRepository private constructor(
             fallback = {
                 EnrollStatusResponse(
                     success = false,
+                    status = "server_error",
                     message = it,
                     enrollId = enrollId
                 )
@@ -173,6 +361,7 @@ class AttendanceRepository private constructor(
             fallback = {
                 CommonResponse(
                     success = false,
+                    status = "server_error",
                     message = it,
                     enrollId = enrollId
                 )

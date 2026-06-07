@@ -1,12 +1,27 @@
-﻿<?xml version="1.0" encoding="utf-8"?>
+<?xml version="1.0" encoding="utf-8"?>
 <resources>
-    <color name="yonam_blue">#1565C0</color>
-    <color name="yonam_blue_dark">#0D47A1</color>
-    <color name="yonam_green">#2E7D32</color>
-    <color name="yonam_red">#C62828</color>
-    <color name="surface">#F5F7FA</color>
-    <color name="card_surface">#FFFFFF</color>
-    <color name="text_primary">#1F2937</color>
-    <color name="text_secondary">#5B6773</color>
-    <color name="divider">#E1E7EF</color>
+    <color name="yonam_deep_red">#B5122B</color>
+    <color name="yonam_red_dark">#8F1024</color>
+    <color name="dark_sidebar">#252A30</color>
+    <color name="dark_sidebar_item">#2E333A</color>
+    <color name="light_background">#F3F4F6</color>
+    <color name="content_white">#FFFFFF</color>
+    <color name="border_gray">#E0E0E0</color>
+    <color name="text_dark">#222222</color>
+    <color name="text_gray">#777777</color>
+    <color name="accent_purple">#9B5BB5</color>
+    <color name="accent_teal">#3CA9A6</color>
+    <color name="success_green">#2E7D32</color>
+    <color name="warning_orange">#F59E0B</color>
+    <color name="error_red">#C62828</color>
+
+    <color name="yonam_blue">@color/yonam_deep_red</color>
+    <color name="yonam_blue_dark">@color/yonam_red_dark</color>
+    <color name="yonam_green">@color/success_green</color>
+    <color name="yonam_red">@color/error_red</color>
+    <color name="surface">@color/light_background</color>
+    <color name="card_surface">@color/content_white</color>
+    <color name="text_primary">@color/text_dark</color>
+    <color name="text_secondary">@color/text_gray</color>
+    <color name="divider">@color/border_gray</color>
 </resources>

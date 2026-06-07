@@ -5,6 +5,8 @@ import com.google.gson.annotations.SerializedName
 data class Session(
     @SerializedName("session_id")
     val sessionId: Int? = null,
+    @SerializedName("subject_id")
+    val subjectId: Int? = null,
     @SerializedName("subject_name")
     val subjectName: String? = null,
     @SerializedName("class_date")

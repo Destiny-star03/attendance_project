@@ -17,6 +17,12 @@
         android:theme="@style/Theme.YonamAttendance"
         android:usesCleartextTraffic="true">
         <activity
+            android:name=".ui.SubjectDetailActivity"
+            android:exported="false" />
+        <activity
+            android:name=".ui.SubjectListActivity"
+            android:exported="false" />
+        <activity
             android:name=".ui.ServerSettingActivity"
             android:exported="false" />
         <activity
@@ -29,7 +35,16 @@
             android:name=".ui.AttendanceCameraActivity"
             android:exported="false" />
         <activity
+            android:name=".ui.StudentMainActivity"
+            android:exported="false" />
+        <activity
+            android:name=".ui.AdminMainActivity"
+            android:exported="false" />
+        <activity
             android:name=".ui.MainActivity"
+            android:exported="false" />
+        <activity
+            android:name=".ui.RoleSelectActivity"
             android:exported="true">
             <intent-filter>
                 <action android:name="android.intent.action.MAIN" />

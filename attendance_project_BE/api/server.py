@@ -24,10 +24,12 @@ from modules.attendance_service import (
     get_active_session,
     get_attendance_records,
     get_session_by_id,
+    get_student_attendance_stats,
     has_attended,
     list_sessions,
     mark_attendance,
 )
+from modules import subject_service
 from modules.attendance_state import AttendanceRecognitionTracker
 from modules.detector import FaceDetector
 from modules.enrollment_service import EnrollmentService
@@ -37,6 +39,7 @@ from modules.student_registration_state import StudentRegistrationTracker
 from modules.student_service import (
     add_student,
     get_student_by_id,
+    get_all_students,
     is_student_no_exists,
     upsert_student_face,
 )
@@ -48,6 +51,24 @@ class SessionCreateRequest(BaseModel):
     start_time: str | None = None
     end_time: str | None = None
 
+
+
+class SubjectCreateRequest(BaseModel):
+    subject_name: str
+    professor_name: str | None = None
+    classroom: str | None = None
+
+
+class SubjectUpdateRequest(BaseModel):
+    subject_name: str | None = None
+    professor_name: str | None = None
+    classroom: str | None = None
+
+
+class SubjectSessionCreateRequest(BaseModel):
+    class_date: str
+    start_time: str | None = None
+    end_time: str | None = None
 
 class StudentRegistrationStartRequest(BaseModel):
     student_no: str
@@ -122,6 +143,7 @@ def _session_payload(session: dict[str, Any] | None) -> dict[str, Any] | None:
     return {
         "session_id": session.get("session_id"),
         "subject_name": session.get("subject_name") or session.get("session_name"),
+        "subject_id": session.get("subject_id"),
         "class_date": session.get("class_date"),
         "start_time": session.get("start_time"),
         "end_time": session.get("end_time"),
@@ -135,6 +157,7 @@ def _student_payload(student: dict[str, Any]) -> dict[str, Any]:
         "student_no": student["student_no"],
         "name": student["name"],
         "department": student.get("department"),
+        "created_at": student.get("created_at"),
     }
 
 
@@ -159,14 +182,14 @@ def _attendance_record_payload(record: dict[str, Any]) -> dict[str, Any]:
 
 
 def _attendance_response(result: dict[str, Any]) -> dict[str, Any]:
+    success = bool(result.get("success", False))
     return {
-        "success": result.get("success", False),
-        "message": result.get("message"),
+        "success": success,
+        "message": "출석 목록 조회 성공" if success else result.get("message", "출석 목록을 조회하지 못했습니다."),
         "session": _session_payload(result.get("session")),
         "date": result.get("date"),
         "items": [_attendance_record_payload(record) for record in result.get("items", [])],
     }
-
 
 def _recognition_payload(recognition: dict[str, Any]) -> dict[str, Any]:
     return {
@@ -204,7 +227,7 @@ def _enroll_face_failure_response(
         return {
             "success": False,
             "status": "multiple_faces",
-            "message": "한 명의 얼굴만 촬영해 주세요.",
+            "message": "한 명만 촬영해 주세요.",
             "enroll_id": enroll_id,
             "pose": pose,
         }
@@ -216,7 +239,6 @@ def _enroll_face_failure_response(
         "enroll_id": enroll_id,
         "pose": pose,
     }
-
 
 def _student_registration_response(registration: dict[str, Any]) -> dict[str, Any]:
     return {
@@ -250,7 +272,7 @@ def _face_failure_response(faces: list[dict[str, Any]] | None) -> dict[str, Any]
             "success": False,
             "matched": False,
             "status": "multiple_faces",
-            "message": "한 명의 얼굴만 촬영해 주세요.",
+            "message": "한 명만 촬영해 주세요.",
         }
 
     return {
@@ -259,7 +281,6 @@ def _face_failure_response(faces: list[dict[str, Any]] | None) -> dict[str, Any]
         "status": "no_face",
         "message": "얼굴을 찾지 못했습니다.",
     }
-
 
 def _csv_file_name(session_id: int | None, date: str | None, session: dict[str, Any] | None) -> str:
     if session_id is not None:
@@ -274,7 +295,7 @@ def _csv_file_name(session_id: int | None, date: str | None, session: dict[str, 
 def _export_attendance_csv(result: dict[str, Any], file_name: str) -> Path:
     ensure_directories()
     export_path = Path(EXPORT_DIR) / file_name
-    columns = ["세션ID", "과목명", "날짜", "시간", "학번", "이름", "학과", "출석상태", "거리값"]
+    columns = ["session_id", "subject_name", "date", "time", "student_no", "name", "department", "status", "distance"]
 
     with export_path.open("w", newline="", encoding="utf-8-sig") as csv_file:
         writer = csv.DictWriter(csv_file, fieldnames=columns)
@@ -283,20 +304,19 @@ def _export_attendance_csv(result: dict[str, Any], file_name: str) -> Path:
         for record in result.get("items", []):
             writer.writerow(
                 {
-                    "세션ID": record.get("session_id", ""),
-                    "과목명": record.get("subject_name", ""),
-                    "날짜": record.get("attendance_date", ""),
-                    "시간": record.get("attendance_time", ""),
-                    "학번": record.get("student_no", ""),
-                    "이름": record.get("name", ""),
-                    "학과": record.get("department") or "",
-                    "출석상태": record.get("status", ""),
-                    "거리값": record.get("distance") if record.get("distance") is not None else "",
+                    "session_id": record.get("session_id", ""),
+                    "subject_name": record.get("subject_name", ""),
+                    "date": record.get("attendance_date", ""),
+                    "time": record.get("attendance_time", ""),
+                    "student_no": record.get("student_no", ""),
+                    "name": record.get("name", ""),
+                    "department": record.get("department") or "",
+                    "status": record.get("status", ""),
+                    "distance": record.get("distance") if record.get("distance") is not None else "",
                 }
             )
 
     return export_path
-
 
 @app.get("/health")
 def health() -> dict[str, str]:
@@ -363,6 +383,81 @@ def close_attendance_session_api(session_id: int) -> dict[str, Any]:
         result["session"] = _session_payload(result["session"])
     return result
 
+
+
+@app.post("/subjects", response_model=None)
+def create_subject_api(request: SubjectCreateRequest) -> dict[str, Any]:
+    return subject_service.create_subject(
+        subject_name=request.subject_name,
+        professor_name=request.professor_name,
+        classroom=request.classroom,
+    )
+
+
+@app.get("/subjects", response_model=None)
+def subjects_api() -> dict[str, Any]:
+    return subject_service.get_subjects()
+
+
+@app.get("/subjects/{subject_id}", response_model=None)
+def subject_detail_api(subject_id: int) -> dict[str, Any]:
+    return subject_service.get_subject_by_id(subject_id)
+
+
+@app.put("/subjects/{subject_id}", response_model=None)
+def update_subject_api(subject_id: int, request: SubjectUpdateRequest) -> dict[str, Any]:
+    return subject_service.update_subject(
+        subject_id=subject_id,
+        subject_name=request.subject_name,
+        professor_name=request.professor_name,
+        classroom=request.classroom,
+    )
+
+
+@app.delete("/subjects/{subject_id}", response_model=None)
+def delete_subject_api(subject_id: int) -> dict[str, Any]:
+    return subject_service.delete_subject(subject_id)
+
+
+@app.post("/subjects/{subject_id}/students/{student_id}", response_model=None)
+def add_subject_student_api(subject_id: int, student_id: int) -> dict[str, Any]:
+    return subject_service.add_student_to_subject(subject_id, student_id)
+
+
+@app.delete("/subjects/{subject_id}/students/{student_id}", response_model=None)
+def remove_subject_student_api(subject_id: int, student_id: int) -> dict[str, Any]:
+    return subject_service.remove_student_from_subject(subject_id, student_id)
+
+
+@app.get("/subjects/{subject_id}/students", response_model=None)
+def subject_students_api(subject_id: int) -> dict[str, Any]:
+    return subject_service.get_subject_students(subject_id)
+
+
+@app.post("/subjects/{subject_id}/sessions", response_model=None)
+def create_subject_session_api(subject_id: int, request: SubjectSessionCreateRequest) -> dict[str, Any]:
+    subject_result = subject_service.get_subject_by_id(subject_id)
+    if not subject_result.get("success") or subject_result.get("subject") is None:
+        return {
+            "success": False,
+            "message": subject_result.get("message", "과목을 찾을 수 없습니다."),
+            "session": None,
+        }
+
+    subject = subject_result["subject"]
+    result = create_attendance_session(
+        subject_name=subject["subject_name"],
+        class_date=request.class_date,
+        start_time=request.start_time,
+        end_time=request.end_time,
+        subject_id=subject_id,
+    )
+    if result.get("success"):
+        recognition_tracker.reset()
+        result["message"] = "수업 세션이 생성되었습니다."
+    if result.get("session") is not None:
+        result["session"] = _session_payload(result["session"])
+    return result
 
 @app.post("/students/registration-sessions", response_model=None)
 def start_student_registration_session(request: StudentRegistrationStartRequest) -> dict[str, Any]:
@@ -588,12 +683,7 @@ async def start_student_enrollment(
             name=resolved_name,
             department=resolved_department,
         )
-        return {
-            "success": True,
-            "message": "얼굴 등록 세션이 시작되었습니다.",
-            "enroll_id": result["enroll_id"],
-            "required_poses": result["required_poses"],
-        }
+        return result
 
     except Exception as error:
         return {
@@ -620,15 +710,7 @@ async def add_student_enrollment_frame(
         if not add_result.get("success"):
             return add_result
 
-        return {
-            "success": True,
-            "message": add_result.get("message", f"{pose} 얼굴이 등록되었습니다."),
-            "enroll_id": enroll_id,
-            "pose": add_result.get("pose", pose),
-            "completed_poses": add_result.get("completed_poses", []),
-            "remaining_poses": add_result.get("remaining_poses", []),
-            "progress": add_result.get("progress", 0),
-        }
+        return add_result
 
     except FileNotFoundError:
         return {
@@ -678,7 +760,7 @@ async def complete_student_enrollment(
         data = {} if enroll_id else await _read_request_data(request)
         resolved_enroll_id = str(enroll_id or data.get("enroll_id") or "").strip()
         if not resolved_enroll_id:
-            return {"success": False, "message": "enroll_id를 입력해 주세요."}
+            return {"success": False, "status": "bad_request", "message": "enroll_id를 입력해 주세요."}
 
         result = enrollment_service.complete_enrollment(resolved_enroll_id)
         if not result.get("success"):
@@ -714,7 +796,9 @@ async def complete_student_enrollment(
         student = save_result.get("student") or {}
         return {
             "success": True,
+            "status": "completed",
             "message": "학생 얼굴 등록이 완료되었습니다.",
+            "enroll_id": resolved_enroll_id,
             "created": save_result.get("created", False),
             "updated": save_result.get("updated", False),
             "student": {
@@ -736,6 +820,56 @@ async def complete_student_enrollment(
 def cancel_student_enrollment(enroll_id: str) -> dict[str, Any]:
     return enrollment_service.cancel_enrollment(enroll_id)
 
+
+@app.get("/students", response_model=None)
+def students() -> dict[str, Any]:
+    return {
+        "success": True,
+        "message": "학생 목록 조회 성공",
+        "items": [_student_payload(student) for student in get_all_students()],
+    }
+
+
+@app.get("/students/{student_id}/stats", response_model=None)
+def student_stats(student_id: int) -> dict[str, Any]:
+    student = get_student_by_id(student_id)
+    if student is None:
+        return {
+            "success": False,
+            "status": "not_found",
+            "message": "학생을 찾을 수 없습니다.",
+            "student": None,
+            "stats": {
+                "attendance_count": 0,
+                "late_count": 0,
+                "absence_count": 0,
+            },
+        }
+
+    stats = get_student_attendance_stats(student_id)
+    if not stats.get("success"):
+        return {
+            "success": False,
+            "status": "server_error",
+            "message": stats.get("message", "학생 통계를 조회하지 못했습니다."),
+            "student": _student_payload(student),
+            "stats": {
+                "attendance_count": 0,
+                "late_count": 0,
+                "absence_count": 0,
+            },
+        }
+
+    return {
+        "success": True,
+        "message": "학생 통계 조회 성공",
+        "student": _student_payload(student),
+        "stats": {
+            "attendance_count": stats.get("attendance_count", 0),
+            "late_count": stats.get("late_count", 0),
+            "absence_count": stats.get("absence_count", 0),
+        },
+    }
 
 @app.post("/students")
 async def create_student(

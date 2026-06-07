@@ -93,7 +93,7 @@
             android:layout_marginTop="14dp"
             android:text="사진 선택"
             android:textColor="@android:color/white"
-            app:backgroundTint="@color/yonam_blue"
+            app:backgroundTint="@color/dark_sidebar"
             app:cornerRadius="8dp" />
 
         <LinearLayout
@@ -108,8 +108,8 @@
                 android:layout_height="48dp"
                 android:layout_weight="1"
                 android:text="취소"
-                android:textColor="@color/text_primary"
-                app:backgroundTint="@color/divider"
+                android:textColor="@android:color/white"
+                app:backgroundTint="@color/dark_sidebar"
                 app:cornerRadius="8dp" />
 
             <com.google.android.material.button.MaterialButton
@@ -120,7 +120,7 @@
                 android:layout_weight="1"
                 android:text="등록하기"
                 android:textColor="@android:color/white"
-                app:backgroundTint="@color/yonam_green"
+                app:backgroundTint="@color/yonam_deep_red"
                 app:cornerRadius="8dp" />
         </LinearLayout>
     </LinearLayout>

@@ -27,7 +27,7 @@ class AttendanceListActivity : AppCompatActivity() {
         setContentView(binding.root)
 
         adapter = AttendanceAdapter { item ->
-            StudentDetailDialog.newInstance(item).show(supportFragmentManager, StudentDetailDialog.TAG)
+            StudentDetailDialog.newInstance(item, serverUrl).show(supportFragmentManager, StudentDetailDialog.TAG)
         }
 
         binding.recyclerAttendance.layoutManager = LinearLayoutManager(this)

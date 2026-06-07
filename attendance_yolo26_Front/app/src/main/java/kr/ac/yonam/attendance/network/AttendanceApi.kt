@@ -4,6 +4,8 @@ import kr.ac.yonam.attendance.model.ActiveSessionResponse
 import kr.ac.yonam.attendance.model.AttendanceListResponse
 import kr.ac.yonam.attendance.model.AttendanceResponse
 import kr.ac.yonam.attendance.model.CommonResponse
+import kr.ac.yonam.attendance.model.CreateSessionRequest
+import kr.ac.yonam.attendance.model.CreateSubjectRequest
 import kr.ac.yonam.attendance.model.EnrollCompleteResponse
 import kr.ac.yonam.attendance.model.EnrollFrameResponse
 import kr.ac.yonam.attendance.model.EnrollStartResponse
@@ -11,14 +13,22 @@ import kr.ac.yonam.attendance.model.EnrollStatusResponse
 import kr.ac.yonam.attendance.model.HealthResponse
 import kr.ac.yonam.attendance.model.SessionListResponse
 import kr.ac.yonam.attendance.model.StudentRegisterResponse
+import kr.ac.yonam.attendance.model.StudentStatsResponse
+import kr.ac.yonam.attendance.model.StudentsResponse
+import kr.ac.yonam.attendance.model.SubjectListResponse
+import kr.ac.yonam.attendance.model.SubjectResponse
+import kr.ac.yonam.attendance.model.SubjectStudentResponse
 import okhttp3.MultipartBody
 import okhttp3.RequestBody
+import retrofit2.Response
+import retrofit2.http.Body
 import retrofit2.http.DELETE
 import retrofit2.http.GET
 import retrofit2.http.Multipart
 import retrofit2.http.POST
 import retrofit2.http.Part
 import retrofit2.http.Path
+import retrofit2.http.PUT
 import retrofit2.http.Query
 
 interface AttendanceApi {
@@ -36,6 +46,14 @@ interface AttendanceApi {
         @Query("session_id") sessionId: Int? = null,
         @Query("date") date: String? = null
     ): AttendanceListResponse
+
+    @GET("students")
+    suspend fun getStudents(): Response<StudentsResponse>
+
+    @GET("students/{student_id}/stats")
+    suspend fun getStudentStats(
+        @Path("student_id") studentId: Int
+    ): Response<StudentStatsResponse>
 
     @Multipart
     @POST("attendance/recognize")
@@ -84,4 +102,51 @@ interface AttendanceApi {
     suspend fun cancelEnrollment(
         @Path("enroll_id") enrollId: String
     ): CommonResponse
+
+    @GET("subjects")
+    suspend fun getSubjects(): SubjectListResponse
+
+    @POST("subjects")
+    suspend fun createSubject(
+        @Body request: CreateSubjectRequest
+    ): SubjectResponse
+
+    @GET("subjects/{subject_id}")
+    suspend fun getSubject(
+        @Path("subject_id") subjectId: Int
+    ): SubjectResponse
+
+    @PUT("subjects/{subject_id}")
+    suspend fun updateSubject(
+        @Path("subject_id") subjectId: Int,
+        @Body request: CreateSubjectRequest
+    ): SubjectResponse
+
+    @DELETE("subjects/{subject_id}")
+    suspend fun deleteSubject(
+        @Path("subject_id") subjectId: Int
+    ): CommonResponse
+
+    @GET("subjects/{subject_id}/students")
+    suspend fun getSubjectStudents(
+        @Path("subject_id") subjectId: Int
+    ): SubjectStudentResponse
+
+    @POST("subjects/{subject_id}/students/{student_id}")
+    suspend fun addStudentToSubject(
+        @Path("subject_id") subjectId: Int,
+        @Path("student_id") studentId: Int
+    ): CommonResponse
+
+    @DELETE("subjects/{subject_id}/students/{student_id}")
+    suspend fun removeStudentFromSubject(
+        @Path("subject_id") subjectId: Int,
+        @Path("student_id") studentId: Int
+    ): CommonResponse
+
+    @POST("subjects/{subject_id}/sessions")
+    suspend fun createSubjectSession(
+        @Path("subject_id") subjectId: Int,
+        @Body request: CreateSessionRequest
+    ): ActiveSessionResponse
 }

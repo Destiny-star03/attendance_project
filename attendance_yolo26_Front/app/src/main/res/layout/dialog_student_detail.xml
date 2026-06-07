@@ -39,10 +39,19 @@
         android:background="@color/divider" />
 
     <TextView
+        android:id="@+id/textStatsMessage"
+        android:layout_width="match_parent"
+        android:layout_height="wrap_content"
+        android:layout_marginTop="14dp"
+        android:text="통계를 불러오는 중..."
+        android:textColor="@color/text_secondary"
+        android:textSize="14sp" />
+
+    <TextView
         android:id="@+id/textPresentCount"
         android:layout_width="match_parent"
         android:layout_height="wrap_content"
-        android:layout_marginTop="16dp"
+        android:layout_marginTop="12dp"
         android:text="출석 0회"
         android:textColor="@color/yonam_green"
         android:textSize="16sp"

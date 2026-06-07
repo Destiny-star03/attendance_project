@@ -33,6 +33,7 @@ def _session_payload(row: sqlite3.Row | None) -> dict[str, Any] | None:
         "session_id": row["id"],
         "subject_name": subject_name,
         "session_name": subject_name,  # 기존 API 호환용 별칭
+        "subject_id": row["subject_id"] if "subject_id" in row.keys() else None,
         "class_date": row["class_date"],
         "start_time": row["start_time"],
         "end_time": row["end_time"],
@@ -44,7 +45,7 @@ def _session_payload(row: sqlite3.Row | None) -> dict[str, Any] | None:
 def _fetch_session(connection: sqlite3.Connection, session_id: int) -> sqlite3.Row | None:
     return connection.execute(
         """
-        SELECT id, subject_name, class_date, start_time, end_time, is_active, created_at
+        SELECT id, subject_id, subject_name, class_date, start_time, end_time, is_active, created_at
         FROM attendance_sessions
         WHERE id = ?
         """,
@@ -57,6 +58,7 @@ def create_attendance_session(
     class_date: str,
     start_time: str | None = None,
     end_time: str | None = None,
+    subject_id: int | None = None,
 ) -> dict[str, Any]:
     try:
         init_db(verbose=False)
@@ -80,6 +82,7 @@ def create_attendance_session(
             cursor = connection.execute(
                 """
                 INSERT INTO attendance_sessions (
+                    subject_id,
                     subject_name,
                     class_date,
                     start_time,
@@ -87,9 +90,9 @@ def create_attendance_session(
                     is_active,
                     created_at
                 )
-                VALUES (?, ?, ?, ?, 1, ?)
+                VALUES (?, ?, ?, ?, ?, 1, ?)
                 """,
-                (normalized_subject, normalized_date, start_time, end_time, _now_text()),
+                (subject_id, normalized_subject, normalized_date, start_time, end_time, _now_text()),
             )
             session_id = int(cursor.lastrowid)
             row = _fetch_session(connection, session_id)
@@ -130,7 +133,7 @@ def get_active_session() -> dict[str, Any] | None:
         with get_connection() as connection:
             row = connection.execute(
                 """
-                SELECT id, subject_name, class_date, start_time, end_time, is_active, created_at
+                SELECT id, subject_id, subject_name, class_date, start_time, end_time, is_active, created_at
                 FROM attendance_sessions
                 WHERE is_active = 1
                 ORDER BY id DESC
@@ -239,7 +242,7 @@ def list_sessions() -> list[dict[str, Any]]:
         with get_connection() as connection:
             rows = connection.execute(
                 """
-                SELECT id, subject_name, class_date, start_time, end_time, is_active, created_at
+                SELECT id, subject_id, subject_name, class_date, start_time, end_time, is_active, created_at
                 FROM attendance_sessions
                 ORDER BY class_date DESC, id DESC
                 """
@@ -579,3 +582,51 @@ if __name__ == "__main__":
     elif args.command == "session":
         for record in get_attendance_by_session(args.session_id):
             print(record)
+
+def get_student_attendance_stats(student_id: int) -> dict[str, Any]:
+    """학생 상세 화면에서 사용할 출석/지각/결석 통계를 조회한다."""
+    try:
+        init_db(verbose=False)
+
+        with get_connection() as connection:
+            student = connection.execute(
+                "SELECT id FROM students WHERE id = ?",
+                (student_id,),
+            ).fetchone()
+            if student is None:
+                return {
+                    "success": False,
+                    "message": "학생을 찾을 수 없습니다.",
+                    "attendance_count": 0,
+                    "late_count": 0,
+                    "absence_count": 0,
+                }
+
+            row = connection.execute(
+                """
+                SELECT
+                    SUM(CASE WHEN status IN ('present', 'attended', '출석') THEN 1 ELSE 0 END) AS attendance_count,
+                    SUM(CASE WHEN status IN ('late', '지각') THEN 1 ELSE 0 END) AS late_count,
+                    SUM(CASE WHEN status IN ('absent', '결석') THEN 1 ELSE 0 END) AS absence_count
+                FROM attendance
+                WHERE student_id = ?
+                """,
+                (student_id,),
+            ).fetchone()
+
+        return {
+            "success": True,
+            "message": "학생 통계 조회 성공",
+            "attendance_count": int(row["attendance_count"] or 0),
+            "late_count": int(row["late_count"] or 0),
+            "absence_count": int(row["absence_count"] or 0),
+        }
+
+    except sqlite3.Error as error:
+        return {
+            "success": False,
+            "message": f"학생 통계 조회 중 데이터베이스 오류가 발생했습니다: {error}",
+            "attendance_count": 0,
+            "late_count": 0,
+            "absence_count": 0,
+        }

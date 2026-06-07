@@ -3,17 +3,17 @@
     xmlns:app="http://schemas.android.com/apk/res-auto"
     android:layout_width="match_parent"
     android:layout_height="match_parent"
-    android:background="@color/surface"
+    android:background="@color/light_background"
     android:fillViewport="true">
 
     <LinearLayout
         android:layout_width="match_parent"
-        android:layout_height="wrap_content"
+        android:layout_height="match_parent"
         android:orientation="vertical">
 
         <LinearLayout
             android:layout_width="match_parent"
-            android:layout_height="112dp"
+            android:layout_height="120dp"
             android:background="@color/yonam_deep_red"
             android:gravity="center_vertical"
             android:orientation="vertical"
@@ -21,38 +21,38 @@
             android:paddingEnd="28dp">
 
             <TextView
-                android:id="@+id/textAppTitle"
                 android:layout_width="match_parent"
                 android:layout_height="wrap_content"
                 android:text="@string/app_name"
                 android:textColor="@android:color/white"
-                android:textSize="30sp"
+                android:textSize="29sp"
                 android:textStyle="bold" />
 
             <TextView
-                android:id="@+id/textAppSubtitle"
                 android:layout_width="match_parent"
                 android:layout_height="wrap_content"
                 android:layout_marginTop="8dp"
-                android:text="@string/app_subtitle"
+                android:text="@string/student_page_title"
                 android:textColor="#F7DDE3"
-                android:textSize="16sp" />
+                android:textSize="17sp"
+                android:textStyle="bold" />
         </LinearLayout>
 
         <LinearLayout
             android:layout_width="match_parent"
-            android:layout_height="wrap_content"
-            android:baselineAligned="false"
-            android:orientation="horizontal"
+            android:layout_height="0dp"
+            android:layout_weight="1"
+            android:orientation="vertical"
             android:padding="20dp">
 
             <com.google.android.material.card.MaterialCardView
-                android:layout_width="0dp"
+                android:layout_width="match_parent"
                 android:layout_height="wrap_content"
-                android:layout_weight="3"
-                app:cardBackgroundColor="@color/card_surface"
+                app:cardBackgroundColor="@color/content_white"
                 app:cardCornerRadius="8dp"
-                app:cardElevation="2dp">
+                app:cardElevation="2dp"
+                app:strokeColor="@color/border_gray"
+                app:strokeWidth="1dp">
 
                 <LinearLayout
                     android:layout_width="match_parent"
@@ -60,13 +60,28 @@
                     android:orientation="vertical"
                     android:padding="20dp">
 
-                    <TextView
+                    <LinearLayout
                         android:layout_width="match_parent"
                         android:layout_height="wrap_content"
-                        android:text="@string/main_current_class_title"
-                        android:textColor="@color/text_primary"
-                        android:textSize="20sp"
-                        android:textStyle="bold" />
+                        android:gravity="center_vertical"
+                        android:orientation="horizontal">
+
+                        <TextView
+                            android:layout_width="0dp"
+                            android:layout_height="wrap_content"
+                            android:layout_weight="1"
+                            android:text="@string/main_current_class_title"
+                            android:textColor="@color/text_primary"
+                            android:textSize="20sp"
+                            android:textStyle="bold" />
+
+                        <ProgressBar
+                            android:id="@+id/progressLoading"
+                            style="?android:attr/progressBarStyleSmall"
+                            android:layout_width="24dp"
+                            android:layout_height="24dp"
+                            android:visibility="gone" />
+                    </LinearLayout>
 
                     <View
                         android:layout_width="match_parent"
@@ -89,7 +104,7 @@
                         android:layout_marginTop="4dp"
                         android:text="-"
                         android:textColor="@color/text_primary"
-                        android:textSize="22sp"
+                        android:textSize="23sp"
                         android:textStyle="bold" />
 
                     <LinearLayout
@@ -202,124 +217,84 @@
                                 android:textSize="17sp" />
                         </LinearLayout>
                     </LinearLayout>
+
+                    <TextView
+                        android:id="@+id/textSessionMessage"
+                        android:layout_width="match_parent"
+                        android:layout_height="wrap_content"
+                        android:layout_marginTop="16dp"
+                        android:text="@string/student_session_load_failed"
+                        android:textColor="@color/yonam_red"
+                        android:textSize="15sp"
+                        android:visibility="gone" />
                 </LinearLayout>
             </com.google.android.material.card.MaterialCardView>
 
-            <LinearLayout
-                android:layout_width="0dp"
+            <com.google.android.material.card.MaterialCardView
+                android:layout_width="match_parent"
                 android:layout_height="wrap_content"
-                android:layout_marginStart="20dp"
-                android:layout_weight="2"
-                android:orientation="vertical">
+                android:layout_marginTop="16dp"
+                app:cardBackgroundColor="@color/content_white"
+                app:cardCornerRadius="8dp"
+                app:cardElevation="2dp"
+                app:strokeColor="@color/accent_teal"
+                app:strokeWidth="2dp">
 
-                <com.google.android.material.card.MaterialCardView
+                <LinearLayout
                     android:layout_width="match_parent"
                     android:layout_height="wrap_content"
-                    app:cardBackgroundColor="@color/card_surface"
-                    app:cardCornerRadius="8dp"
-                    app:cardElevation="2dp">
+                    android:orientation="vertical"
+                    android:padding="20dp">
 
-                    <LinearLayout
+                    <TextView
                         android:layout_width="match_parent"
                         android:layout_height="wrap_content"
-                        android:orientation="vertical"
-                        android:padding="20dp">
+                        android:text="@string/student_attendance_guide_title"
+                        android:textColor="@color/accent_teal"
+                        android:textSize="19sp"
+                        android:textStyle="bold" />
 
-                        <TextView
-                            android:layout_width="match_parent"
-                            android:layout_height="wrap_content"
-                            android:text="@string/main_server_title"
-                            android:textColor="@color/text_primary"
-                            android:textSize="20sp"
-                            android:textStyle="bold" />
+                    <TextView
+                        android:layout_width="match_parent"
+                        android:layout_height="wrap_content"
+                        android:layout_marginTop="10dp"
+                        android:text="@string/student_attendance_guide_camera"
+                        android:textColor="@color/text_primary"
+                        android:textSize="16sp" />
 
-                        <com.google.android.material.textfield.TextInputLayout
-                            android:layout_width="match_parent"
-                            android:layout_height="wrap_content"
-                            android:layout_marginTop="14dp"
-                            android:hint="@string/main_server_url_hint">
+                    <TextView
+                        android:layout_width="match_parent"
+                        android:layout_height="wrap_content"
+                        android:layout_marginTop="6dp"
+                        android:text="@string/student_attendance_guide_hold"
+                        android:textColor="@color/text_primary"
+                        android:textSize="16sp" />
+                </LinearLayout>
+            </com.google.android.material.card.MaterialCardView>
 
-                            <com.google.android.material.textfield.TextInputEditText
-                                android:id="@+id/editServerUrl"
-                                android:layout_width="match_parent"
-                                android:layout_height="wrap_content"
-                                android:inputType="textUri"
-                                android:singleLine="true"
-                                android:text="@string/default_server_url" />
-                        </com.google.android.material.textfield.TextInputLayout>
+            <com.google.android.material.button.MaterialButton
+                android:id="@+id/buttonStartAttendance"
+                android:layout_width="match_parent"
+                android:layout_height="56dp"
+                android:layout_marginTop="20dp"
+                android:text="@string/main_start_attendance"
+                android:textAllCaps="false"
+                android:textColor="@android:color/white"
+                app:backgroundTint="@color/yonam_deep_red"
+                app:cornerRadius="8dp" />
 
-                        <TextView
-                            android:id="@+id/textServerStatus"
-                            android:layout_width="match_parent"
-                            android:layout_height="wrap_content"
-                            android:layout_marginTop="12dp"
-                            android:text="@string/server_status_ready"
-                            android:textColor="@color/text_secondary"
-                            android:textSize="15sp"
-                            android:textStyle="bold" />
-
-                        <com.google.android.material.button.MaterialButton
-                            android:id="@+id/buttonCheckServer"
-                            android:layout_width="match_parent"
-                            android:layout_height="52dp"
-                            android:layout_marginTop="16dp"
-                            android:text="@string/main_check_server"
-                            android:textColor="@android:color/white"
-                            app:backgroundTint="@color/dark_sidebar"
-                            app:cornerRadius="8dp" />
-                    </LinearLayout>
-                </com.google.android.material.card.MaterialCardView>
-
-                <com.google.android.material.button.MaterialButton
-                    android:id="@+id/buttonStartAttendance"
-                    android:layout_width="match_parent"
-                    android:layout_height="54dp"
-                    android:layout_marginTop="16dp"
-                    android:text="@string/main_start_attendance"
-                    android:textColor="@android:color/white"
-                    app:backgroundTint="@color/yonam_deep_red"
-                    app:cornerRadius="8dp" />
-
-                <com.google.android.material.button.MaterialButton
-                    android:id="@+id/buttonAttendanceList"
-                    android:layout_width="match_parent"
-                    android:layout_height="54dp"
-                    android:layout_marginTop="10dp"
-                    android:text="@string/main_attendance_list"
-                    android:textColor="@android:color/white"
-                    app:backgroundTint="@color/dark_sidebar"
-                    app:cornerRadius="8dp" />
-
-                <com.google.android.material.button.MaterialButton
-                    android:id="@+id/buttonRegisterStudent"
-                    android:layout_width="match_parent"
-                    android:layout_height="54dp"
-                    android:layout_marginTop="10dp"
-                    android:text="@string/main_register_student"
-                    android:textColor="@android:color/white"
-                    app:backgroundTint="@color/yonam_deep_red"
-                    app:cornerRadius="8dp" />
-
-                <com.google.android.material.button.MaterialButton
-                    android:id="@+id/buttonAdmin"
-                    android:layout_width="match_parent"
-                    android:layout_height="54dp"
-                    android:layout_marginTop="10dp"
-                    android:text="@string/main_admin"
-                    android:textColor="@android:color/white"
-                    app:backgroundTint="@color/dark_sidebar"
-                    app:cornerRadius="8dp" />
-
-                <com.google.android.material.button.MaterialButton
-                    android:id="@+id/buttonServerSetting"
-                    android:layout_width="match_parent"
-                    android:layout_height="54dp"
-                    android:layout_marginTop="10dp"
-                    android:text="@string/main_server_setting"
-                    android:textColor="@android:color/white"
-                    app:backgroundTint="@color/yonam_red"
-                    app:cornerRadius="8dp" />
-            </LinearLayout>
+            <com.google.android.material.button.MaterialButton
+                android:id="@+id/buttonBackToRoleSelect"
+                android:layout_width="match_parent"
+                android:layout_height="54dp"
+                android:layout_marginTop="10dp"
+                android:text="@string/student_back_to_role_select"
+                android:textAllCaps="false"
+                android:textColor="@color/yonam_deep_red"
+                app:backgroundTint="@android:color/white"
+                app:cornerRadius="8dp"
+                app:strokeColor="@color/yonam_deep_red"
+                app:strokeWidth="1dp" />
         </LinearLayout>
     </LinearLayout>
 </ScrollView>

@@ -59,7 +59,7 @@ def _get_columns(connection: sqlite3.Connection, table_name: str) -> set[str]:
 
 
 def _create_students_table(cursor: sqlite3.Cursor) -> None:
-    # 학생 테이블은 기존 구조를 유지한다. face_encoding BLOB도 변경하지 않는다.
+    # 기존 얼굴 임베딩 저장 구조를 유지한다.
     cursor.execute(
         """
         CREATE TABLE IF NOT EXISTS students (
@@ -74,6 +74,36 @@ def _create_students_table(cursor: sqlite3.Cursor) -> None:
     )
 
 
+def _create_subjects_table(cursor: sqlite3.Cursor) -> None:
+    cursor.execute(
+        """
+        CREATE TABLE IF NOT EXISTS subjects (
+            id INTEGER PRIMARY KEY AUTOINCREMENT,
+            subject_name TEXT NOT NULL,
+            professor_name TEXT,
+            classroom TEXT,
+            created_at TEXT NOT NULL
+        )
+        """
+    )
+
+
+def _create_subject_students_table(cursor: sqlite3.Cursor) -> None:
+    cursor.execute(
+        """
+        CREATE TABLE IF NOT EXISTS subject_students (
+            id INTEGER PRIMARY KEY AUTOINCREMENT,
+            subject_id INTEGER NOT NULL,
+            student_id INTEGER NOT NULL,
+            created_at TEXT NOT NULL,
+            FOREIGN KEY(subject_id) REFERENCES subjects(id),
+            FOREIGN KEY(student_id) REFERENCES students(id),
+            UNIQUE(subject_id, student_id)
+        )
+        """
+    )
+
+
 def _create_attendance_sessions_table(
     cursor: sqlite3.Cursor,
     table_name: str = "attendance_sessions",
@@ -82,12 +112,14 @@ def _create_attendance_sessions_table(
         f"""
         CREATE TABLE IF NOT EXISTS {table_name} (
             id INTEGER PRIMARY KEY AUTOINCREMENT,
+            subject_id INTEGER,
             subject_name TEXT NOT NULL,
             class_date TEXT NOT NULL,
             start_time TEXT,
             end_time TEXT,
             is_active INTEGER DEFAULT 1,
-            created_at TEXT NOT NULL
+            created_at TEXT NOT NULL,
+            FOREIGN KEY(subject_id) REFERENCES subjects(id)
         )
         """
     )
@@ -193,6 +225,19 @@ def _attendance_schema_is_current(connection: sqlite3.Connection) -> bool:
     )
 
 
+def _ensure_attendance_sessions_subject_id_column(connection: sqlite3.Connection) -> None:
+    if not _table_exists(connection, "attendance_sessions"):
+        return
+
+    columns = _get_columns(connection, "attendance_sessions")
+    if "subject_id" in columns:
+        return
+
+    # SQLite는 ALTER TABLE ADD COLUMN에서 외래키 제약을 안정적으로 추가하기 어렵다.
+    # 기존 DB는 nullable subject_id 컬럼만 추가하고, 신규 DB는 CREATE TABLE 단계에서 FK를 가진다.
+    connection.execute("ALTER TABLE attendance_sessions ADD COLUMN subject_id INTEGER")
+
+
 def _migrate_attendance_sessions_table(connection: sqlite3.Connection) -> None:
     cursor = connection.cursor()
 
@@ -201,6 +246,7 @@ def _migrate_attendance_sessions_table(connection: sqlite3.Connection) -> None:
         return
 
     if _attendance_sessions_schema_is_current(connection):
+        _ensure_attendance_sessions_subject_id_column(connection)
         return
 
     old_columns = _get_columns(connection, "attendance_sessions")
@@ -213,6 +259,7 @@ def _migrate_attendance_sessions_table(connection: sqlite3.Connection) -> None:
             subject_source = "session_name"
 
         subject_expr = subject_source if subject_source is not None else "'기존 출석 세션'"
+        subject_id_expr = "subject_id" if "subject_id" in old_columns else "NULL"
         start_expr = "start_time" if "start_time" in old_columns else "NULL"
         end_expr = "end_time" if "end_time" in old_columns else "NULL"
         active_expr = "is_active" if "is_active" in old_columns else "1"
@@ -221,6 +268,7 @@ def _migrate_attendance_sessions_table(connection: sqlite3.Connection) -> None:
             f"""
             INSERT INTO attendance_sessions (
                 id,
+                subject_id,
                 subject_name,
                 class_date,
                 start_time,
@@ -230,6 +278,7 @@ def _migrate_attendance_sessions_table(connection: sqlite3.Connection) -> None:
             )
             SELECT
                 id,
+                {subject_id_expr},
                 COALESCE({subject_expr}, '기존 출석 세션'),
                 class_date,
                 {start_expr},
@@ -286,7 +335,7 @@ def _migrate_attendance_table(connection: sqlite3.Connection) -> None:
         )
 
     elif {"student_id", "attendance_date", "attendance_time", "status"}.issubset(old_columns):
-        # 예전 날짜 기준 출석 테이블은 날짜별 임시 세션을 만들어 최대한 보존한다.
+        # 이전 날짜 기준 출석 테이블은 날짜별 임시 세션을 만들어 최대한 보존한다.
         legacy_rows = cursor.execute(
             """
             SELECT student_id, attendance_date, attendance_time, status
@@ -341,7 +390,7 @@ def _migrate_attendance_table(connection: sqlite3.Connection) -> None:
 
 
 def reset_attendance_tables() -> None:
-    """개발용으로 출석 세션과 출석 기록만 초기화한다. students 테이블은 보존한다."""
+    """개발용으로 출석 세션과 출석 기록만 초기화한다. students, subjects 테이블은 보존한다."""
     ensure_directories()
 
     with get_connection() as connection:
@@ -349,6 +398,9 @@ def reset_attendance_tables() -> None:
         cursor = connection.cursor()
         cursor.execute("DROP TABLE IF EXISTS attendance")
         cursor.execute("DROP TABLE IF EXISTS attendance_sessions")
+        _create_students_table(cursor)
+        _create_subjects_table(cursor)
+        _create_subject_students_table(cursor)
         _create_attendance_sessions_table(cursor)
         _create_attendance_table(cursor)
         connection.commit()
@@ -359,11 +411,14 @@ def init_db(verbose: bool = True) -> None:
     ensure_directories()
 
     with get_connection() as connection:
-        # 기존 테이블을 재구성할 수 있으므로 마이그레이션 중에는 외래키 검사를 잠시 끈다.
+        # 기존 테이블과 데이터를 보존하면서 필요한 테이블/컬럼만 보강한다.
         connection.execute("PRAGMA foreign_keys = OFF")
         cursor = connection.cursor()
         _create_students_table(cursor)
+        _create_subjects_table(cursor)
+        _create_subject_students_table(cursor)
         _migrate_attendance_sessions_table(connection)
+        _ensure_attendance_sessions_subject_id_column(connection)
         _migrate_attendance_table(connection)
         connection.commit()
         connection.execute("PRAGMA foreign_keys = ON")

@@ -3,6 +3,7 @@ package kr.ac.yonam.attendance.ui
 import android.Manifest
 import android.content.pm.PackageManager
 import android.os.Bundle
+import android.view.View
 import androidx.activity.result.contract.ActivityResultContracts
 import androidx.appcompat.app.AppCompatActivity
 import androidx.camera.core.CameraSelector
@@ -55,6 +56,7 @@ class AttendanceCameraActivity : AppCompatActivity() {
         if (granted) {
             startCameraPreview()
         } else {
+            binding.faceGuideOverlay.setGuideState("no_face", "카메라 권한이 필요합니다")
             showRecognitionMessage("카메라 권한이 필요합니다.", R.color.yonam_red)
         }
     }
@@ -70,7 +72,7 @@ class AttendanceCameraActivity : AppCompatActivity() {
         setupStudentList()
         bindActions()
         showInitialRecognitionState()
-        loadDummyStudents()
+        loadStudents()
         checkServerConnection()
         loadActiveSession()
         ensureCameraPermission()
@@ -78,7 +80,7 @@ class AttendanceCameraActivity : AppCompatActivity() {
 
     private fun setupStudentList() {
         adapter = AttendanceAdapter { item ->
-            StudentDetailDialog.newInstance(item).show(supportFragmentManager, StudentDetailDialog.TAG)
+            StudentDetailDialog.newInstance(item, serverUrl).show(supportFragmentManager, StudentDetailDialog.TAG)
         }
         binding.recyclerStudents.layoutManager = LinearLayoutManager(this)
         binding.recyclerStudents.adapter = adapter
@@ -89,8 +91,7 @@ class AttendanceCameraActivity : AppCompatActivity() {
             finish()
         }
         binding.buttonRefreshStudents.setOnClickListener {
-            loadDummyStudents()
-            syncAttendanceList()
+            loadStudents()
             showInitialRecognitionState()
         }
     }
@@ -155,6 +156,7 @@ class AttendanceCameraActivity : AppCompatActivity() {
             )
             showInitialRecognitionState()
         } catch (error: Exception) {
+            binding.faceGuideOverlay.setGuideState("no_face", "카메라 프리뷰를 시작하지 못했습니다")
             showRecognitionMessage("카메라 프리뷰를 시작하지 못했습니다.", R.color.yonam_red)
         }
     }
@@ -211,6 +213,7 @@ class AttendanceCameraActivity : AppCompatActivity() {
     }
 
     private fun showNoFace() {
+        binding.faceGuideOverlay.setGuideState("no_face", "얼굴을 원 안에 맞춰주세요")
         showRecognitionMessage("얼굴을 화면에 맞춰주세요", R.color.text_primary)
         binding.textRecognitionTimer.text = "0.0 / 3초"
         binding.textRecognizedStudent.text = "현재 인식된 학생: -"
@@ -220,43 +223,53 @@ class AttendanceCameraActivity : AppCompatActivity() {
     private fun showRecognizing(response: AttendanceResponse) {
         val elapsed = response.elapsedSeconds ?: 0.0
         val hold = response.holdSeconds ?: 3.0
+        binding.faceGuideOverlay.setGuideState(
+            "recognizing",
+            "인식 중...",
+            "${formatSeconds(elapsed)} / ${formatSeconds(hold)}초"
+        )
         showRecognitionMessage("인식 중... ${formatSeconds(elapsed)} / ${formatSeconds(hold)}초", R.color.yonam_blue)
         binding.textRecognitionTimer.text = "${formatSeconds(elapsed)} / ${formatSeconds(hold)}초"
         binding.progressRecognition.progress = ((elapsed / hold).coerceIn(0.0, 1.0) * 300).toInt()
         binding.textRecognizedStudent.text = recognizedStudentText(response)
-        upsertStudent(response, STATUS_RECOGNIZING)
+        updateStudentFromRecognition(response, STATUS_RECOGNIZING)
     }
 
     private fun showAttended(response: AttendanceResponse) {
+        binding.faceGuideOverlay.setGuideState("attended", "출석 완료")
         showRecognitionMessage("출석 완료", R.color.yonam_green)
         val hold = response.holdSeconds ?: 3.0
         binding.textRecognitionTimer.text = "${formatSeconds(hold)} / ${formatSeconds(hold)}초"
         binding.progressRecognition.progress = 300
         binding.textRecognizedStudent.text = recognizedStudentText(response)
-        upsertStudent(response, STATUS_ATTENDED)
-        syncAttendanceList()
+        updateStudentFromRecognition(response, STATUS_ATTENDED)
+        loadAttendanceAndSyncStatus()
         pauseAndResetRecognition()
     }
 
     private fun showAlreadyAttended(response: AttendanceResponse) {
+        binding.faceGuideOverlay.setGuideState("already_attended", "이미 출석함")
         showRecognitionMessage("이미 출석함", R.color.yonam_blue)
         binding.textRecognizedStudent.text = recognizedStudentText(response)
-        upsertStudent(response, STATUS_ALREADY_ATTENDED)
-        syncAttendanceList()
+        updateStudentFromRecognition(response, STATUS_ALREADY_ATTENDED)
+        loadAttendanceAndSyncStatus()
         pauseAndResetRecognition()
     }
 
     private fun showUnknown() {
+        binding.faceGuideOverlay.setGuideState("unknown", "미등록 사용자입니다")
         showRecognitionMessage("미등록 사용자", R.color.yonam_red)
         binding.textRecognizedStudent.text = "현재 인식된 학생: -"
     }
 
     private fun showMultipleFaces() {
+        binding.faceGuideOverlay.setGuideState("multiple_faces", "한 명만 화면에 들어오게 해주세요")
         showRecognitionMessage("한 명만 촬영해 주세요", R.color.yonam_red)
         binding.textRecognizedStudent.text = "현재 인식된 학생: -"
     }
 
     private fun showNetworkError(message: String?) {
+        binding.faceGuideOverlay.setGuideState("unknown", message ?: "서버 오류가 발생했습니다")
         showRecognitionMessage("서버 연결 오류", R.color.yonam_red)
         binding.textRecognitionTimer.text = "0.0 / 3초"
         binding.textRecognizedStudent.text = message ?: "서버 응답을 받지 못했습니다."
@@ -273,7 +286,71 @@ class AttendanceCameraActivity : AppCompatActivity() {
         }
     }
 
-    private fun upsertStudent(response: AttendanceResponse, status: String) {
+    private fun loadStudents() {
+        showStudentListMessage("학생 목록을 불러오는 중입니다.", isError = false)
+        setStudentListLoading(true)
+
+        lifecycleScope.launch {
+            try {
+                val response = repository.getStudents()
+                if (response.success == true) {
+                    val students = response.items.orEmpty()
+                    studentItems.clear()
+                    studentItems.addAll(
+                        students.map { student ->
+                            AttendanceItem(
+                                studentId = student.studentId,
+                                studentNo = student.studentNo,
+                                name = student.name,
+                                department = student.department,
+                                status = normalizeAttendanceStatus(student.attendanceStatus ?: student.status)
+                            )
+                        }
+                    )
+                    adapter.submitList(studentItems.toList())
+
+                    if (studentItems.isEmpty()) {
+                        showStudentListMessage("등록된 학생이 없습니다.", isError = false)
+                    } else {
+                        hideStudentListMessage()
+                    }
+
+                    loadAttendanceAndSyncStatus()
+                } else {
+                    studentItems.clear()
+                    adapter.submitList(emptyList())
+                    val errorMessage = response.message?.takeIf { it.isNotBlank() }?.let {
+                        "학생 목록을 불러오지 못했습니다.\n$it"
+                    } ?: "학생 목록을 불러오지 못했습니다."
+                    showStudentListMessage(
+                        errorMessage,
+                        isError = true
+                    )
+                }
+            } catch (error: Exception) {
+                studentItems.clear()
+                adapter.submitList(emptyList())
+                showStudentListMessage(
+                    "학생 목록을 불러오지 못했습니다.\n${error.message ?: "알 수 없는 오류"}",
+                    isError = true
+                )
+            } finally {
+                setStudentListLoading(false)
+            }
+        }
+    }
+
+    private fun updateStudentFromRecognition(response: AttendanceResponse, status: String) {
+        val student = response.student ?: return
+        val updated = updateStudentStatus(student.studentId, status) ||
+            updateStudentStatusByStudentNo(student.studentNo, status)
+
+        if (!updated) {
+            upsertStudentFromRecognition(response, status)
+        }
+    }
+
+    private fun upsertStudentFromRecognition(response: AttendanceResponse, status: String) {
         val student = response.student ?: return
         val identity = student.studentNo ?: student.studentId?.toString() ?: return
         val item = AttendanceItem(
@@ -296,9 +373,12 @@ class AttendanceCameraActivity : AppCompatActivity() {
             studentItems.add(0, item)
         }
         adapter.submitList(studentItems.toList())
+        if (studentItems.isNotEmpty()) {
+            hideStudentListMessage()
+        }
     }
 
-    private fun syncAttendanceList() {
+    private fun loadAttendanceAndSyncStatus() {
         lifecycleScope.launch {
             val response = repository.getAttendance(sessionId = activeSessionId)
             if (response.success == false) return@launch
@@ -323,10 +403,37 @@ class AttendanceCameraActivity : AppCompatActivity() {
 
             if (index >= 0) {
                 studentItems[index] = mergeKnownFields(studentItems[index], normalizedRecord)
-            } else {
-                studentItems.add(normalizedRecord)
             }
         }
+    }
+
+    private fun updateStudentStatus(studentId: Int?, status: String): Boolean {
+        return updateStudentStatusInternal(studentId = studentId, studentNo = null, status = status)
+    }
+
+    private fun updateStudentStatusByStudentNo(studentNo: String?, status: String): Boolean {
+        return updateStudentStatusInternal(studentId = null, studentNo = studentNo, status = status)
+    }
+
+    private fun updateStudentStatusInternal(
+        studentId: Int?,
+        studentNo: String?,
+        status: String
+    ): Boolean {
+        val normalizedStatus = normalizeAttendanceStatus(status)
+        val index = studentItems.indexOfFirst { item ->
+            when {
+                studentId != null && item.studentId == studentId -> true
+                !studentNo.isNullOrBlank() && item.studentNo == studentNo -> true
+                else -> false
+            }
+        }
+
+        if (index < 0) return false
+
+        studentItems[index] = studentItems[index].copy(status = normalizedStatus)
+        adapter.submitList(studentItems.toList())
+        return true
     }
 
     private fun AttendanceItem.sameStudent(identity: String?, otherStudentId: Int?): Boolean {
@@ -387,25 +494,12 @@ class AttendanceCameraActivity : AppCompatActivity() {
             val response = repository.getActiveSession()
             activeSessionId = response.session?.sessionId
             showSession(response.session)
-            syncAttendanceList()
+            loadAttendanceAndSyncStatus()
         }
     }
 
-    private fun loadDummyStudents() {
-        studentItems.clear()
-        studentItems.addAll(
-            listOf(
-                AttendanceItem(studentNo = "20240001", name = "김연암", department = "스마트소프트웨어학과", status = STATUS_PENDING),
-                AttendanceItem(studentNo = "20240002", name = "이공학", department = "스마트소프트웨어학과", status = STATUS_PENDING),
-                AttendanceItem(studentNo = "20240003", name = "박태블릿", department = "스마트소프트웨어학과", status = STATUS_PENDING),
-                AttendanceItem(studentNo = "20240004", name = "최출석", department = "스마트소프트웨어학과", status = STATUS_PENDING),
-                AttendanceItem(studentNo = "20240005", name = "정카메라", department = "스마트소프트웨어학과", status = STATUS_PENDING)
-            )
-        )
-        adapter.submitList(studentItems.toList())
-    }
-
     private fun showInitialRecognitionState() {
+        binding.faceGuideOverlay.setGuideState("idle", "얼굴을 원 안에 맞춰주세요")
         showRecognitionMessage("얼굴을 화면에 맞춰주세요", R.color.text_primary)
         binding.textRecognitionTimer.text = "0.0 / 3초"
         binding.textRecognizedStudent.text = "현재 인식된 학생: -"
@@ -433,6 +527,22 @@ class AttendanceCameraActivity : AppCompatActivity() {
 
     private fun formatSeconds(value: Double): String {
         return String.format("%.1f", value)
+    }
+
+    private fun showStudentListMessage(message: String, isError: Boolean) {
+        binding.textStudentListMessage.text = message
+        binding.textStudentListMessage.visibility = View.VISIBLE
+        binding.textStudentListMessage.setTextColor(
+            color(if (isError) R.color.yonam_red else R.color.text_secondary)
+        )
+    }
+
+    private fun hideStudentListMessage() {
+        binding.textStudentListMessage.visibility = View.GONE
+    }
+
+    private fun setStudentListLoading(isLoading: Boolean) {
+        binding.buttonRefreshStudents.isEnabled = !isLoading
     }
 
     override fun onDestroy() {

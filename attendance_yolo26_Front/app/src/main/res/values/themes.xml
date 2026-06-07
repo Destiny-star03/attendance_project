@@ -1,11 +1,15 @@
-﻿<?xml version="1.0" encoding="utf-8"?>
+<?xml version="1.0" encoding="utf-8"?>
 <resources>
     <style name="Theme.YonamAttendance" parent="Theme.MaterialComponents.DayNight.NoActionBar">
-        <item name="colorPrimary">@color/yonam_blue</item>
-        <item name="colorPrimaryVariant">@color/yonam_blue_dark</item>
-        <item name="colorSecondary">@color/yonam_green</item>
+        <item name="colorPrimary">@color/yonam_deep_red</item>
+        <item name="colorPrimaryVariant">@color/yonam_red_dark</item>
+        <item name="colorSecondary">@color/accent_teal</item>
+        <item name="colorError">@color/error_red</item>
         <item name="android:fontFamily">sans</item>
-        <item name="android:statusBarColor">@color/yonam_blue_dark</item>
+        <item name="android:windowBackground">@color/light_background</item>
+        <item name="android:colorAccent">@color/accent_purple</item>
+        <item name="android:statusBarColor">@color/yonam_red_dark</item>
+        <item name="android:navigationBarColor">@color/dark_sidebar</item>
         <item name="android:windowLightStatusBar">false</item>
     </style>
 </resources>
