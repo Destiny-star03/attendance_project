@@ -23,7 +23,10 @@ class FaceDetector:
         self.confidence_threshold = confidence_threshold
 
         if not self.model_path.exists():
-            message = f"YOLO 얼굴 검출 모델 파일을 찾을 수 없습니다: {self.model_path}"
+            message = (
+                f"YOLO 얼굴 검출 모델 파일을 찾을 수 없습니다: {self.model_path}. "
+                "학습 결과 best.pt를 models/yolo26_face.pt로 배치한 뒤 다시 실행하세요."
+            )
             print(message)
             raise FileNotFoundError(message)
 

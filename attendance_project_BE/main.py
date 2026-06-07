@@ -97,7 +97,7 @@ def run_attendance(camera_index: int = CAMERA_INDEX) -> int:
         active_session = get_or_create_active_session()
     except FileNotFoundError:
         print("모델 오류: YOLO26 얼굴 검출 모델 파일을 찾을 수 없습니다.")
-        print("models/yolo26_face.pt 파일을 준비한 뒤 다시 실행해 주세요.")
+        print("학습 결과 best.pt를 models/yolo26_face.pt로 배치한 뒤 다시 실행해 주세요.")
         return 1
     except Exception as error:
         print(f"초기화 오류: 프로그램을 시작할 수 없습니다. ({error})")

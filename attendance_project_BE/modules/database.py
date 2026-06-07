@@ -82,10 +82,30 @@ def _create_subjects_table(cursor: sqlite3.Cursor) -> None:
             subject_name TEXT NOT NULL,
             professor_name TEXT,
             classroom TEXT,
+            classroom_id INTEGER,
+            day_of_week TEXT,
+            start_time TEXT,
+            end_time TEXT,
             created_at TEXT NOT NULL
         )
         """
     )
+
+
+def _ensure_subjects_columns(connection: sqlite3.Connection) -> None:
+    if not _table_exists(connection, "subjects"):
+        return
+
+    columns = _get_columns(connection, "subjects")
+    missing_columns = {
+        "classroom_id": "INTEGER",
+        "day_of_week": "TEXT",
+        "start_time": "TEXT",
+        "end_time": "TEXT",
+    }
+    for column_name, column_type in missing_columns.items():
+        if column_name not in columns:
+            connection.execute(f"ALTER TABLE subjects ADD COLUMN {column_name} {column_type}")
 
 
 def _create_subject_students_table(cursor: sqlite3.Cursor) -> None:
@@ -113,11 +133,13 @@ def _create_attendance_sessions_table(
         CREATE TABLE IF NOT EXISTS {table_name} (
             id INTEGER PRIMARY KEY AUTOINCREMENT,
             subject_id INTEGER,
+            classroom_id INTEGER,
+            day_of_week TEXT,
             subject_name TEXT NOT NULL,
             class_date TEXT NOT NULL,
             start_time TEXT,
             end_time TEXT,
-            is_active INTEGER DEFAULT 1,
+            is_active INTEGER DEFAULT 0,
             created_at TEXT NOT NULL,
             FOREIGN KEY(subject_id) REFERENCES subjects(id)
         )
@@ -225,17 +247,21 @@ def _attendance_schema_is_current(connection: sqlite3.Connection) -> bool:
     )
 
 
-def _ensure_attendance_sessions_subject_id_column(connection: sqlite3.Connection) -> None:
+def _ensure_attendance_sessions_columns(connection: sqlite3.Connection) -> None:
     if not _table_exists(connection, "attendance_sessions"):
         return
 
     columns = _get_columns(connection, "attendance_sessions")
-    if "subject_id" in columns:
-        return
-
-    # SQLite는 ALTER TABLE ADD COLUMN에서 외래키 제약을 안정적으로 추가하기 어렵다.
-    # 기존 DB는 nullable subject_id 컬럼만 추가하고, 신규 DB는 CREATE TABLE 단계에서 FK를 가진다.
-    connection.execute("ALTER TABLE attendance_sessions ADD COLUMN subject_id INTEGER")
+    missing_columns = {
+        "subject_id": "INTEGER",
+        "classroom_id": "INTEGER",
+        "day_of_week": "TEXT",
+    }
+    for column_name, column_type in missing_columns.items():
+        if column_name not in columns:
+            # SQLite는 ALTER TABLE ADD COLUMN에서 외래키 제약을 안정적으로 추가하기 어렵다.
+            # 기존 DB는 nullable 컬럼만 추가하고, 신규 DB는 CREATE TABLE 단계에서 FK를 가진다.
+            connection.execute(f"ALTER TABLE attendance_sessions ADD COLUMN {column_name} {column_type}")
 
 
 def _migrate_attendance_sessions_table(connection: sqlite3.Connection) -> None:
@@ -246,7 +272,7 @@ def _migrate_attendance_sessions_table(connection: sqlite3.Connection) -> None:
         return
 
     if _attendance_sessions_schema_is_current(connection):
-        _ensure_attendance_sessions_subject_id_column(connection)
+        _ensure_attendance_sessions_columns(connection)
         return
 
     old_columns = _get_columns(connection, "attendance_sessions")
@@ -260,6 +286,8 @@ def _migrate_attendance_sessions_table(connection: sqlite3.Connection) -> None:
 
         subject_expr = subject_source if subject_source is not None else "'기존 출석 세션'"
         subject_id_expr = "subject_id" if "subject_id" in old_columns else "NULL"
+        classroom_id_expr = "classroom_id" if "classroom_id" in old_columns else "NULL"
+        day_of_week_expr = "day_of_week" if "day_of_week" in old_columns else "NULL"
         start_expr = "start_time" if "start_time" in old_columns else "NULL"
         end_expr = "end_time" if "end_time" in old_columns else "NULL"
         active_expr = "is_active" if "is_active" in old_columns else "1"
@@ -269,6 +297,8 @@ def _migrate_attendance_sessions_table(connection: sqlite3.Connection) -> None:
             INSERT INTO attendance_sessions (
                 id,
                 subject_id,
+                classroom_id,
+                day_of_week,
                 subject_name,
                 class_date,
                 start_time,
@@ -279,6 +309,8 @@ def _migrate_attendance_sessions_table(connection: sqlite3.Connection) -> None:
             SELECT
                 id,
                 {subject_id_expr},
+                {classroom_id_expr},
+                {day_of_week_expr},
                 COALESCE({subject_expr}, '기존 출석 세션'),
                 class_date,
                 {start_expr},
@@ -400,8 +432,10 @@ def reset_attendance_tables() -> None:
         cursor.execute("DROP TABLE IF EXISTS attendance_sessions")
         _create_students_table(cursor)
         _create_subjects_table(cursor)
+        _ensure_subjects_columns(connection)
         _create_subject_students_table(cursor)
         _create_attendance_sessions_table(cursor)
+        _ensure_attendance_sessions_columns(connection)
         _create_attendance_table(cursor)
         connection.commit()
         connection.execute("PRAGMA foreign_keys = ON")
@@ -416,9 +450,10 @@ def init_db(verbose: bool = True) -> None:
         cursor = connection.cursor()
         _create_students_table(cursor)
         _create_subjects_table(cursor)
+        _ensure_subjects_columns(connection)
         _create_subject_students_table(cursor)
         _migrate_attendance_sessions_table(connection)
-        _ensure_attendance_sessions_subject_id_column(connection)
+        _ensure_attendance_sessions_columns(connection)
         _migrate_attendance_table(connection)
         connection.commit()
         connection.execute("PRAGMA foreign_keys = ON")

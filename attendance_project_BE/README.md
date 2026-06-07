@@ -30,6 +30,8 @@ models/yolo26_face.pt
 ```
 
 모델 경로는 `config.py`의 `YOLO_MODEL_PATH`에서만 관리합니다.
+현재 학습 산출물을 사용할 경우 `runs/detect/runs/train/face_yolo_30ep/weights/best.pt`를 위 경로로 복사합니다.
+루트의 `yolo11n.pt`는 학습 시작점/base weight이며 런타임 얼굴 검출 모델로 사용하지 않습니다.
 
 ## DB 초기화
 

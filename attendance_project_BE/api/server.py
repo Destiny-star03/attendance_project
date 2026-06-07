@@ -23,9 +23,11 @@ from modules.attendance_service import (
     create_attendance_session,
     get_active_session,
     get_attendance_records,
+    get_current_session_by_classroom,
     get_session_by_id,
     get_student_attendance_stats,
     has_attended,
+    is_student_enrolled_in_subject,
     list_sessions,
     mark_attendance,
 )
@@ -50,6 +52,10 @@ class SessionCreateRequest(BaseModel):
     class_date: str
     start_time: str | None = None
     end_time: str | None = None
+    subject_id: int | None = None
+    classroom_id: int | None = None
+    day_of_week: str | None = None
+    activate: bool = False
 
 
 
@@ -57,18 +63,29 @@ class SubjectCreateRequest(BaseModel):
     subject_name: str
     professor_name: str | None = None
     classroom: str | None = None
+    classroom_id: int | None = None
+    day_of_week: str | None = None
+    start_time: str | None = None
+    end_time: str | None = None
 
 
 class SubjectUpdateRequest(BaseModel):
     subject_name: str | None = None
     professor_name: str | None = None
     classroom: str | None = None
+    classroom_id: int | None = None
+    day_of_week: str | None = None
+    start_time: str | None = None
+    end_time: str | None = None
 
 
 class SubjectSessionCreateRequest(BaseModel):
     class_date: str
     start_time: str | None = None
     end_time: str | None = None
+    classroom_id: int | None = None
+    day_of_week: str | None = None
+    activate: bool = False
 
 class StudentRegistrationStartRequest(BaseModel):
     student_no: str
@@ -144,6 +161,9 @@ def _session_payload(session: dict[str, Any] | None) -> dict[str, Any] | None:
         "session_id": session.get("session_id"),
         "subject_name": session.get("subject_name") or session.get("session_name"),
         "subject_id": session.get("subject_id"),
+        "classroom_id": session.get("classroom_id"),
+        "classroom_name": session.get("classroom_name"),
+        "day_of_week": session.get("day_of_week"),
         "class_date": session.get("class_date"),
         "start_time": session.get("start_time"),
         "end_time": session.get("end_time"),
@@ -166,6 +186,8 @@ def _attendance_record_payload(record: dict[str, Any]) -> dict[str, Any]:
         "attendance_id": record.get("id"),
         "session_id": record.get("session_id"),
         "subject_name": record.get("subject_name"),
+        "classroom_id": record.get("classroom_id"),
+        "day_of_week": record.get("day_of_week"),
         "class_date": record.get("class_date"),
         "start_time": record.get("start_time"),
         "end_time": record.get("end_time"),
@@ -195,6 +217,12 @@ def _recognition_payload(recognition: dict[str, Any]) -> dict[str, Any]:
     return {
         "distance": recognition.get("distance"),
         "similarity": recognition.get("similarity"),
+        "second_distance": recognition.get("second_distance"),
+        "distance_margin": recognition.get("distance_margin"),
+        "threshold": recognition.get("threshold"),
+        "margin_threshold": recognition.get("margin_threshold"),
+        "threshold_pass": recognition.get("threshold_pass"),
+        "margin_pass": recognition.get("margin_pass"),
     }
 
 
@@ -330,6 +358,10 @@ def create_session(request: SessionCreateRequest) -> dict[str, Any]:
         class_date=request.class_date,
         start_time=request.start_time,
         end_time=request.end_time,
+        subject_id=request.subject_id,
+        classroom_id=request.classroom_id,
+        day_of_week=request.day_of_week,
+        activate=request.activate,
     )
     if result.get("success"):
         recognition_tracker.reset()
@@ -364,6 +396,20 @@ def active_session() -> dict[str, Any]:
     }
 
 
+@app.get("/sessions/current", response_model=None)
+def current_session(
+    classroom_id: int | None = None,
+    classroom_name: str | None = None,
+) -> dict[str, Any]:
+    result = get_current_session_by_classroom(
+        classroom_id=classroom_id,
+        classroom_name=classroom_name,
+    )
+    if result.get("session") is not None:
+        result["session"] = _session_payload(result["session"])
+    return result
+
+
 @app.post("/sessions/{session_id}/activate", response_model=None)
 def activate_attendance_session_api(session_id: int) -> dict[str, Any]:
     result = activate_session(session_id)
@@ -391,6 +437,10 @@ def create_subject_api(request: SubjectCreateRequest) -> dict[str, Any]:
         subject_name=request.subject_name,
         professor_name=request.professor_name,
         classroom=request.classroom,
+        classroom_id=request.classroom_id,
+        day_of_week=request.day_of_week,
+        start_time=request.start_time,
+        end_time=request.end_time,
     )
 
 
@@ -411,6 +461,10 @@ def update_subject_api(subject_id: int, request: SubjectUpdateRequest) -> dict[s
         subject_name=request.subject_name,
         professor_name=request.professor_name,
         classroom=request.classroom,
+        classroom_id=request.classroom_id,
+        day_of_week=request.day_of_week,
+        start_time=request.start_time,
+        end_time=request.end_time,
     )
 
 
@@ -448,9 +502,12 @@ def create_subject_session_api(subject_id: int, request: SubjectSessionCreateReq
     result = create_attendance_session(
         subject_name=subject["subject_name"],
         class_date=request.class_date,
-        start_time=request.start_time,
-        end_time=request.end_time,
+        start_time=request.start_time or subject.get("start_time"),
+        end_time=request.end_time or subject.get("end_time"),
         subject_id=subject_id,
+        classroom_id=request.classroom_id if request.classroom_id is not None else subject.get("classroom_id"),
+        day_of_week=request.day_of_week or subject.get("day_of_week"),
+        activate=request.activate,
     )
     if result.get("success"):
         recognition_tracker.reset()
@@ -548,7 +605,7 @@ async def add_student_registration_frame(
             "success": False,
             "registration_id": registration_id,
             "direction": direction,
-            "message": "YOLO26 얼굴 검출 모델 파일을 찾을 수 없습니다.",
+            "message": "YOLO26 얼굴 검출 모델 파일을 찾을 수 없습니다. 학습 결과 best.pt를 models/yolo26_face.pt로 배치하세요.",
         }
     except RuntimeError as error:
         return {
@@ -716,7 +773,7 @@ async def add_student_enrollment_frame(
         return {
             "success": False,
             "status": "model_error",
-            "message": "YOLO26 얼굴 검출 모델 파일을 찾을 수 없습니다.",
+            "message": "YOLO26 얼굴 검출 모델 파일을 찾을 수 없습니다. 학습 결과 best.pt를 models/yolo26_face.pt로 배치하세요.",
             "enroll_id": enroll_id,
             "pose": pose,
         }
@@ -910,7 +967,10 @@ async def create_student(
         }
 
     except FileNotFoundError:
-        return {"success": False, "message": "YOLO26 얼굴 검출 모델 파일을 찾을 수 없습니다."}
+        return {
+            "success": False,
+            "message": "YOLO26 얼굴 검출 모델 파일을 찾을 수 없습니다. 학습 결과 best.pt를 models/yolo26_face.pt로 배치하세요.",
+        }
     except RuntimeError as error:
         return {"success": False, "message": str(error)}
     except ValueError as error:
@@ -935,6 +995,16 @@ async def recognize_attendance(
 
         recognition = _get_recognizer().recognize(face_result.face_crop)
         recognition_data = _recognition_payload(recognition)
+
+        if recognition.get("ambiguous"):
+            recognition_tracker.reset()
+            return {
+                "success": True,
+                "matched": False,
+                "status": "ambiguous_face",
+                "message": "얼굴 인식 결과가 명확하지 않습니다. 다시 시도해 주세요.",
+                "recognition": recognition_data,
+            }
 
         if not recognition["matched"]:
             recognition_tracker.reset()
@@ -977,6 +1047,23 @@ async def recognize_attendance(
         session_data = _session_payload(session)
         student_id = int(student["id"])
         student_data = _student_payload(student)
+        subject_id = session.get("subject_id")
+
+        if subject_id is not None and not is_student_enrolled_in_subject(student_id, int(subject_id)):
+            recognition_tracker.reset()
+            return {
+                "success": False,
+                "matched": True,
+                "status": "not_enrolled",
+                "message": "해당 수업의 수강생이 아닙니다.",
+                "session": session_data,
+                "student": student_data,
+                "recognition": recognition_data,
+                "attendance": {
+                    "marked": False,
+                    "message": "수강생 아님",
+                },
+            }
 
         if has_attended(student_id, resolved_session_id):
             recognition_tracker.mark_attended(student_id, session_id=resolved_session_id)
@@ -1068,7 +1155,7 @@ async def recognize_attendance(
             "success": False,
             "matched": False,
             "status": "model_error",
-            "message": "YOLO26 얼굴 검출 모델 파일을 찾을 수 없습니다.",
+            "message": "YOLO26 얼굴 검출 모델 파일을 찾을 수 없습니다. 학습 결과 best.pt를 models/yolo26_face.pt로 배치하세요.",
         }
     except RuntimeError as error:
         return {"success": False, "matched": False, "status": "runtime_error", "message": str(error)}

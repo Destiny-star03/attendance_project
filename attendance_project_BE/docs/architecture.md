@@ -157,6 +157,10 @@ flowchart LR
 | `ATTENDANCE_HOLD_SECONDS` | `3.0` | 출석 확정 전 유지 시간 |
 | `TRACKER_TIMEOUT_SECONDS` | `5.0` | 추적 상태 만료 시간 |
 
+`models/yolo26_face.pt`는 런타임 필수 파일이다. 현재 학습된 얼굴 검출 가중치를 사용할 때는
+`runs/detect/runs/train/face_yolo_30ep/weights/best.pt`를 이 경로로 복사한다.
+`yolo11n.pt`는 학습 시작점/base weight로만 사용한다.
+
 ## 6. 배포 및 실행 구조
 
 FastAPI 서버:

@@ -425,7 +425,8 @@ Android 앱은 얼굴 방향을 서버에 `pose` 값으로 전달합니다.
 
 ## 7. 테스트 시 확인할 것
 
-- `models/yolo26_face.pt` 모델 파일이 존재해야 합니다.
+- `models/yolo26_face.pt` 런타임 모델 파일이 존재해야 합니다.
+- 학습 산출물을 사용할 경우 `runs/detect/runs/train/face_yolo_30ep/weights/best.pt`를 `models/yolo26_face.pt`로 복사해야 합니다.
 - FaceNet 관련 패키지가 설치되어 있어야 합니다.
 - 등록 이미지에는 한 명의 얼굴만 보여야 합니다.
 - 각 pose별로 얼굴이 너무 흐리거나 어둡지 않아야 합니다.

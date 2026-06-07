@@ -94,7 +94,7 @@ def register_student_from_console() -> bool:
         detector = FaceDetector()
     except FileNotFoundError:
         print("등록 실패: YOLO26 얼굴 검출 모델 파일을 찾을 수 없습니다.")
-        print("models/yolo26_face.pt 파일을 준비한 뒤 다시 실행해 주세요.")
+        print("학습 결과 best.pt를 models/yolo26_face.pt로 배치한 뒤 다시 실행해 주세요.")
         return False
     except Exception as error:
         print(f"등록 실패: 얼굴 검출 모델을 불러오는 중 오류가 발생했습니다. ({error})")

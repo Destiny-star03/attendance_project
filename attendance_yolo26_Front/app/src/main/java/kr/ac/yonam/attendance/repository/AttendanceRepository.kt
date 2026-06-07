@@ -5,9 +5,11 @@ import android.net.Uri
 import kr.ac.yonam.attendance.model.ActiveSessionResponse
 import kr.ac.yonam.attendance.model.AttendanceListResponse
 import kr.ac.yonam.attendance.model.AttendanceResponse
+import kr.ac.yonam.attendance.model.ClassroomListResponse
 import kr.ac.yonam.attendance.model.CommonResponse
 import kr.ac.yonam.attendance.model.CreateSessionRequest
 import kr.ac.yonam.attendance.model.CreateSubjectRequest
+import kr.ac.yonam.attendance.model.CurrentSessionResponse
 import kr.ac.yonam.attendance.model.EnrollCompleteResponse
 import kr.ac.yonam.attendance.model.EnrollFrameResponse
 import kr.ac.yonam.attendance.model.EnrollStartResponse
@@ -44,6 +46,13 @@ class AttendanceRepository private constructor(
         return safeCall(
             call = { api.getActiveSession() },
             fallback = { ActiveSessionResponse(success = false, message = it) }
+        )
+    }
+
+    suspend fun getCurrentSession(classroomId: Int): CurrentSessionResponse {
+        return safeCall(
+            call = { api.getCurrentSession(classroomId) },
+            fallback = { CurrentSessionResponse(success = false, message = it) }
         )
     }
 
@@ -113,6 +122,13 @@ class AttendanceRepository private constructor(
         return safeCall(
             call = { api.getSubjects() },
             fallback = { SubjectListResponse(success = false, message = it, items = emptyList()) }
+        )
+    }
+
+    suspend fun getClassrooms(): ClassroomListResponse {
+        return safeCall(
+            call = { api.getClassrooms() },
+            fallback = { ClassroomListResponse(success = false, message = it, items = emptyList()) }
         )
     }
 

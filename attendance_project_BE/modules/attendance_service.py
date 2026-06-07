@@ -20,6 +20,10 @@ def _current_time() -> str:
     return datetime.now().time().isoformat(timespec="seconds")
 
 
+def _current_time_hhmm() -> str:
+    return datetime.now().time().isoformat(timespec="minutes")
+
+
 def _now_text() -> str:
     return datetime.now().isoformat(timespec="seconds")
 
@@ -34,6 +38,9 @@ def _session_payload(row: sqlite3.Row | None) -> dict[str, Any] | None:
         "subject_name": subject_name,
         "session_name": subject_name,  # 기존 API 호환용 별칭
         "subject_id": row["subject_id"] if "subject_id" in row.keys() else None,
+        "classroom_id": row["classroom_id"] if "classroom_id" in row.keys() else None,
+        "classroom_name": row["classroom_name"] if "classroom_name" in row.keys() else None,
+        "day_of_week": row["day_of_week"] if "day_of_week" in row.keys() else None,
         "class_date": row["class_date"],
         "start_time": row["start_time"],
         "end_time": row["end_time"],
@@ -45,9 +52,21 @@ def _session_payload(row: sqlite3.Row | None) -> dict[str, Any] | None:
 def _fetch_session(connection: sqlite3.Connection, session_id: int) -> sqlite3.Row | None:
     return connection.execute(
         """
-        SELECT id, subject_id, subject_name, class_date, start_time, end_time, is_active, created_at
+        SELECT
+            attendance_sessions.id,
+            attendance_sessions.subject_id,
+            attendance_sessions.classroom_id,
+            subjects.classroom AS classroom_name,
+            attendance_sessions.day_of_week,
+            attendance_sessions.subject_name,
+            attendance_sessions.class_date,
+            attendance_sessions.start_time,
+            attendance_sessions.end_time,
+            attendance_sessions.is_active,
+            attendance_sessions.created_at
         FROM attendance_sessions
-        WHERE id = ?
+        LEFT JOIN subjects ON subjects.id = attendance_sessions.subject_id
+        WHERE attendance_sessions.id = ?
         """,
         (session_id,),
     ).fetchone()
@@ -59,6 +78,9 @@ def create_attendance_session(
     start_time: str | None = None,
     end_time: str | None = None,
     subject_id: int | None = None,
+    classroom_id: int | None = None,
+    day_of_week: str | None = None,
+    activate: bool = False,
 ) -> dict[str, Any]:
     try:
         init_db(verbose=False)
@@ -69,20 +91,23 @@ def create_attendance_session(
             return {"success": False, "message": "과목명을 입력해 주세요.", "session": None}
         if not normalized_date:
             return {"success": False, "message": "수업 날짜를 입력해 주세요.", "session": None}
+        normalized_day_of_week = day_of_week.strip() if day_of_week else None
 
         with get_connection() as connection:
-            # MVP 정책: 새 세션을 만들면 기존 활성 세션을 모두 비활성화하고 새 세션을 활성화한다.
-            connection.execute(
-                """
-                UPDATE attendance_sessions
-                SET is_active = 0
-                WHERE is_active = 1
-                """
-            )
+            if activate:
+                connection.execute(
+                    """
+                    UPDATE attendance_sessions
+                    SET is_active = 0
+                    WHERE is_active = 1
+                    """
+                )
             cursor = connection.execute(
                 """
                 INSERT INTO attendance_sessions (
                     subject_id,
+                    classroom_id,
+                    day_of_week,
                     subject_name,
                     class_date,
                     start_time,
@@ -90,9 +115,19 @@ def create_attendance_session(
                     is_active,
                     created_at
                 )
-                VALUES (?, ?, ?, ?, ?, 1, ?)
+                VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)
                 """,
-                (subject_id, normalized_subject, normalized_date, start_time, end_time, _now_text()),
+                (
+                    subject_id,
+                    classroom_id,
+                    normalized_day_of_week,
+                    normalized_subject,
+                    normalized_date,
+                    start_time,
+                    end_time,
+                    1 if activate else 0,
+                    _now_text(),
+                ),
             )
             session_id = int(cursor.lastrowid)
             row = _fetch_session(connection, session_id)
@@ -133,10 +168,22 @@ def get_active_session() -> dict[str, Any] | None:
         with get_connection() as connection:
             row = connection.execute(
                 """
-                SELECT id, subject_id, subject_name, class_date, start_time, end_time, is_active, created_at
+                SELECT
+                    attendance_sessions.id,
+                    attendance_sessions.subject_id,
+                    attendance_sessions.classroom_id,
+                    subjects.classroom AS classroom_name,
+                    attendance_sessions.day_of_week,
+                    attendance_sessions.subject_name,
+                    attendance_sessions.class_date,
+                    attendance_sessions.start_time,
+                    attendance_sessions.end_time,
+                    attendance_sessions.is_active,
+                    attendance_sessions.created_at
                 FROM attendance_sessions
-                WHERE is_active = 1
-                ORDER BY id DESC
+                LEFT JOIN subjects ON subjects.id = attendance_sessions.subject_id
+                WHERE attendance_sessions.is_active = 1
+                ORDER BY attendance_sessions.id DESC
                 LIMIT 1
                 """
             ).fetchone()
@@ -148,12 +195,101 @@ def get_active_session() -> dict[str, Any] | None:
         return None
 
 
+def get_current_session_by_classroom(
+    classroom_id: int | None = None,
+    classroom_name: str | None = None,
+) -> dict[str, Any]:
+    normalized_classroom_name = classroom_name.strip() if classroom_name else None
+    if classroom_id is None and not normalized_classroom_name:
+        return {
+            "success": False,
+            "status": "bad_request",
+            "message": "classroom_id 또는 classroom_name 중 하나는 필수입니다.",
+            "session": None,
+        }
+
+    try:
+        init_db(verbose=False)
+        today = _today()
+        current_time = _current_time_hhmm()
+
+        with get_connection() as connection:
+            row = connection.execute(
+                """
+                SELECT
+                    attendance_sessions.id,
+                    attendance_sessions.subject_id,
+                    attendance_sessions.classroom_id,
+                    subjects.classroom AS classroom_name,
+                    attendance_sessions.day_of_week,
+                    attendance_sessions.subject_name,
+                    attendance_sessions.class_date,
+                    attendance_sessions.start_time,
+                    attendance_sessions.end_time,
+                    attendance_sessions.is_active,
+                    attendance_sessions.created_at
+                FROM attendance_sessions
+                LEFT JOIN subjects ON subjects.id = attendance_sessions.subject_id
+                WHERE attendance_sessions.class_date = ?
+                  AND attendance_sessions.start_time IS NOT NULL
+                  AND attendance_sessions.end_time IS NOT NULL
+                  AND substr(attendance_sessions.start_time, 1, 5) <= ?
+                  AND substr(attendance_sessions.end_time, 1, 5) >= ?
+                  AND (
+                    (? IS NOT NULL AND (
+                        attendance_sessions.classroom_id = ?
+                        OR subjects.classroom_id = ?
+                    ))
+                    OR (? IS NOT NULL AND subjects.classroom = ?)
+                  )
+                ORDER BY
+                    substr(attendance_sessions.start_time, 1, 5) ASC,
+                    attendance_sessions.created_at DESC,
+                    attendance_sessions.id DESC
+                LIMIT 1
+                """,
+                (
+                    today,
+                    current_time,
+                    current_time,
+                    classroom_id,
+                    classroom_id,
+                    classroom_id,
+                    normalized_classroom_name,
+                    normalized_classroom_name,
+                ),
+            ).fetchone()
+
+        session = _session_payload(row)
+        if session is None:
+            return {
+                "success": False,
+                "status": "no_current_session",
+                "message": "현재 선택한 강의실에서 진행 중인 수업이 없습니다.",
+                "session": None,
+            }
+
+        return {
+            "success": True,
+            "message": "현재 진행 중인 수업입니다.",
+            "session": session,
+        }
+
+    except sqlite3.Error as error:
+        return {
+            "success": False,
+            "status": "server_error",
+            "message": f"현재 수업 조회 중 데이터베이스 오류가 발생했습니다: {error}",
+            "session": None,
+        }
+
+
 def get_or_create_active_session() -> dict[str, Any]:
     active_session = get_active_session()
     if active_session is not None:
         return active_session
 
-    result = create_attendance_session(DEFAULT_SUBJECT_NAME, _today())
+    result = create_attendance_session(DEFAULT_SUBJECT_NAME, _today(), activate=True)
     if not result.get("success") or result.get("session") is None:
         raise RuntimeError(result.get("message", "활성 출석 세션을 생성하지 못했습니다."))
 
@@ -242,9 +378,21 @@ def list_sessions() -> list[dict[str, Any]]:
         with get_connection() as connection:
             rows = connection.execute(
                 """
-                SELECT id, subject_id, subject_name, class_date, start_time, end_time, is_active, created_at
+                SELECT
+                    attendance_sessions.id,
+                    attendance_sessions.subject_id,
+                    attendance_sessions.classroom_id,
+                    subjects.classroom AS classroom_name,
+                    attendance_sessions.day_of_week,
+                    attendance_sessions.subject_name,
+                    attendance_sessions.class_date,
+                    attendance_sessions.start_time,
+                    attendance_sessions.end_time,
+                    attendance_sessions.is_active,
+                    attendance_sessions.created_at
                 FROM attendance_sessions
-                ORDER BY class_date DESC, id DESC
+                LEFT JOIN subjects ON subjects.id = attendance_sessions.subject_id
+                ORDER BY attendance_sessions.class_date DESC, attendance_sessions.id DESC
                 """
             ).fetchall()
 
@@ -268,6 +416,28 @@ def has_attended(student_id: int, session_id: int) -> bool:
                 LIMIT 1
                 """,
                 (student_id, session_id),
+            ).fetchone()
+
+        return row is not None
+
+    except sqlite3.Error as error:
+        print(f"데이터베이스 오류가 발생했습니다: {error}")
+        return False
+
+
+def is_student_enrolled_in_subject(student_id: int, subject_id: int) -> bool:
+    try:
+        init_db(verbose=False)
+
+        with get_connection() as connection:
+            row = connection.execute(
+                """
+                SELECT id
+                FROM subject_students
+                WHERE student_id = ? AND subject_id = ?
+                LIMIT 1
+                """,
+                (student_id, subject_id),
             ).fetchone()
 
         return row is not None
@@ -406,6 +576,8 @@ def get_attendance_by_session(session_id: int) -> list[dict[str, Any]]:
                     attendance.confidence,
                     attendance.distance,
                     attendance_sessions.subject_name,
+                    attendance_sessions.classroom_id,
+                    attendance_sessions.day_of_week,
                     attendance_sessions.class_date,
                     attendance_sessions.start_time,
                     attendance_sessions.end_time
@@ -449,6 +621,8 @@ def get_attendance_by_date(date: str) -> list[dict[str, Any]]:
                     attendance.confidence,
                     attendance.distance,
                     attendance_sessions.subject_name,
+                    attendance_sessions.classroom_id,
+                    attendance_sessions.day_of_week,
                     attendance_sessions.class_date,
                     attendance_sessions.start_time,
                     attendance_sessions.end_time
@@ -529,11 +703,12 @@ if __name__ == "__main__":
     mark_parser.add_argument("student_id", type=int, help="Student ID.")
     mark_parser.add_argument("--session-id", type=int, default=None, help="Attendance session ID.")
 
-    create_session_parser = subparsers.add_parser("create-session", help="Create a new active session.")
+    create_session_parser = subparsers.add_parser("create-session", help="Create a new attendance session.")
     create_session_parser.add_argument("subject_name", help="Subject name.")
     create_session_parser.add_argument("--class-date", default=_today(), help="Class date in YYYY-MM-DD format.")
     create_session_parser.add_argument("--start-time", default=None, help="Start time in HH:MM format.")
     create_session_parser.add_argument("--end-time", default=None, help="End time in HH:MM format.")
+    create_session_parser.add_argument("--activate", action="store_true", help="Activate the session after creation.")
 
     activate_parser = subparsers.add_parser("activate-session", help="Activate a session.")
     activate_parser.add_argument("session_id", type=int, help="Session ID.")
@@ -562,6 +737,7 @@ if __name__ == "__main__":
                 args.class_date,
                 start_time=args.start_time,
                 end_time=args.end_time,
+                activate=args.activate,
             )
         )
     elif args.command == "activate-session":

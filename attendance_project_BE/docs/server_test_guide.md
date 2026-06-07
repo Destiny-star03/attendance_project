@@ -458,7 +458,8 @@ http://10.0.2.2:8000
 
 - 서버가 `0.0.0.0`으로 실행되었는지 확인한다.
 - Windows 방화벽이 8000 포트를 막고 있지 않은지 확인한다.
-- `models/yolo26_face.pt` 경로가 맞는지 확인한다.
+- `models/yolo26_face.pt` 런타임 모델 파일이 존재하는지 확인한다.
+- 학습 산출물을 사용할 경우 `runs/detect/runs/train/face_yolo_30ep/weights/best.pt`를 `models/yolo26_face.pt`로 복사했는지 확인한다.
 - `config.py`의 `YOLO_MODEL_PATH`가 실제 모델 파일을 가리키는지 확인한다.
 - 학생이 FaceNet 임베딩으로 다시 등록되어 있는지 확인한다.
 - `FACE_RECOGNITION_THRESHOLD`가 너무 낮거나 높지 않은지 확인한다.

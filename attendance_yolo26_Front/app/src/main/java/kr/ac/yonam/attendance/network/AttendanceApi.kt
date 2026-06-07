@@ -3,9 +3,11 @@ package kr.ac.yonam.attendance.network
 import kr.ac.yonam.attendance.model.ActiveSessionResponse
 import kr.ac.yonam.attendance.model.AttendanceListResponse
 import kr.ac.yonam.attendance.model.AttendanceResponse
+import kr.ac.yonam.attendance.model.ClassroomListResponse
 import kr.ac.yonam.attendance.model.CommonResponse
 import kr.ac.yonam.attendance.model.CreateSessionRequest
 import kr.ac.yonam.attendance.model.CreateSubjectRequest
+import kr.ac.yonam.attendance.model.CurrentSessionResponse
 import kr.ac.yonam.attendance.model.EnrollCompleteResponse
 import kr.ac.yonam.attendance.model.EnrollFrameResponse
 import kr.ac.yonam.attendance.model.EnrollStartResponse
@@ -37,6 +39,11 @@ interface AttendanceApi {
 
     @GET("sessions/active")
     suspend fun getActiveSession(): ActiveSessionResponse
+
+    @GET("sessions/current")
+    suspend fun getCurrentSession(
+        @Query("classroom_id") classroomId: Int
+    ): CurrentSessionResponse
 
     @GET("sessions")
     suspend fun getSessions(): SessionListResponse
@@ -105,6 +112,9 @@ interface AttendanceApi {
 
     @GET("subjects")
     suspend fun getSubjects(): SubjectListResponse
+
+    @GET("classrooms")
+    suspend fun getClassrooms(): ClassroomListResponse
 
     @POST("subjects")
     suspend fun createSubject(

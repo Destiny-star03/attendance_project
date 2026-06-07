@@ -19,7 +19,11 @@ def _subject_payload(row: sqlite3.Row | None) -> dict[str, Any] | None:
         "subject_id": row["id"],
         "subject_name": row["subject_name"],
         "professor_name": row["professor_name"],
-        "classroom": row["classroom"],
+        "classroom": row["classroom"] if "classroom" in row.keys() else None,
+        "classroom_id": row["classroom_id"] if "classroom_id" in row.keys() else None,
+        "day_of_week": row["day_of_week"] if "day_of_week" in row.keys() else None,
+        "start_time": row["start_time"] if "start_time" in row.keys() else None,
+        "end_time": row["end_time"] if "end_time" in row.keys() else None,
         "created_at": row["created_at"],
     }
     if "student_count" in row.keys():
@@ -45,6 +49,10 @@ def _fetch_subject(connection: sqlite3.Connection, subject_id: int) -> sqlite3.R
             subjects.subject_name,
             subjects.professor_name,
             subjects.classroom,
+            subjects.classroom_id,
+            subjects.day_of_week,
+            subjects.start_time,
+            subjects.end_time,
             subjects.created_at,
             COUNT(subject_students.id) AS student_count
         FROM subjects
@@ -68,12 +76,19 @@ def create_subject(
     subject_name: str,
     professor_name: str | None = None,
     classroom: str | None = None,
+    classroom_id: int | None = None,
+    day_of_week: str | None = None,
+    start_time: str | None = None,
+    end_time: str | None = None,
 ) -> dict[str, Any]:
     try:
         init_db(verbose=False)
         normalized_name = subject_name.strip()
         normalized_professor = professor_name.strip() if professor_name else None
         normalized_classroom = classroom.strip() if classroom else None
+        normalized_day_of_week = day_of_week.strip() if day_of_week else None
+        normalized_start_time = start_time.strip() if start_time else None
+        normalized_end_time = end_time.strip() if end_time else None
 
         if not normalized_name:
             return {"success": False, "message": "과목명을 입력해 주세요.", "subject": None}
@@ -81,10 +96,28 @@ def create_subject(
         with get_connection() as connection:
             cursor = connection.execute(
                 """
-                INSERT INTO subjects (subject_name, professor_name, classroom, created_at)
-                VALUES (?, ?, ?, ?)
+                INSERT INTO subjects (
+                    subject_name,
+                    professor_name,
+                    classroom,
+                    classroom_id,
+                    day_of_week,
+                    start_time,
+                    end_time,
+                    created_at
+                )
+                VALUES (?, ?, ?, ?, ?, ?, ?, ?)
                 """,
-                (normalized_name, normalized_professor, normalized_classroom, _now_text()),
+                (
+                    normalized_name,
+                    normalized_professor,
+                    normalized_classroom,
+                    classroom_id,
+                    normalized_day_of_week,
+                    normalized_start_time,
+                    normalized_end_time,
+                    _now_text(),
+                ),
             )
             subject_id = int(cursor.lastrowid)
             subject = _fetch_subject(connection, subject_id)
@@ -111,6 +144,10 @@ def get_subjects() -> dict[str, Any]:
                     subjects.subject_name,
                     subjects.professor_name,
                     subjects.classroom,
+                    subjects.classroom_id,
+                    subjects.day_of_week,
+                    subjects.start_time,
+                    subjects.end_time,
                     subjects.created_at,
                     COUNT(subject_students.id) AS student_count
                 FROM subjects
@@ -154,6 +191,10 @@ def update_subject(
     subject_name: str | None = None,
     professor_name: str | None = None,
     classroom: str | None = None,
+    classroom_id: int | None = None,
+    day_of_week: str | None = None,
+    start_time: str | None = None,
+    end_time: str | None = None,
 ) -> dict[str, Any]:
     try:
         init_db(verbose=False)
@@ -165,6 +206,10 @@ def update_subject(
             next_name = current["subject_name"] if subject_name is None else subject_name.strip()
             next_professor = current["professor_name"] if professor_name is None else (professor_name.strip() or None)
             next_classroom = current["classroom"] if classroom is None else (classroom.strip() or None)
+            next_classroom_id = current["classroom_id"] if classroom_id is None else classroom_id
+            next_day_of_week = current["day_of_week"] if day_of_week is None else (day_of_week.strip() or None)
+            next_start_time = current["start_time"] if start_time is None else (start_time.strip() or None)
+            next_end_time = current["end_time"] if end_time is None else (end_time.strip() or None)
 
             if not next_name:
                 return {"success": False, "message": "과목명을 입력해 주세요.", "subject": None}
@@ -172,10 +217,26 @@ def update_subject(
             connection.execute(
                 """
                 UPDATE subjects
-                SET subject_name = ?, professor_name = ?, classroom = ?
+                SET
+                    subject_name = ?,
+                    professor_name = ?,
+                    classroom = ?,
+                    classroom_id = ?,
+                    day_of_week = ?,
+                    start_time = ?,
+                    end_time = ?
                 WHERE id = ?
                 """,
-                (next_name, next_professor, next_classroom, subject_id),
+                (
+                    next_name,
+                    next_professor,
+                    next_classroom,
+                    next_classroom_id,
+                    next_day_of_week,
+                    next_start_time,
+                    next_end_time,
+                    subject_id,
+                ),
             )
             subject = _fetch_subject(connection, subject_id)
             connection.commit()
@@ -329,7 +390,16 @@ def get_student_subjects(student_id: int) -> dict[str, Any]:
 
             rows = connection.execute(
                 """
-                SELECT subjects.id, subjects.subject_name, subjects.professor_name, subjects.classroom, subjects.created_at
+                SELECT
+                    subjects.id,
+                    subjects.subject_name,
+                    subjects.professor_name,
+                    subjects.classroom,
+                    subjects.classroom_id,
+                    subjects.day_of_week,
+                    subjects.start_time,
+                    subjects.end_time,
+                    subjects.created_at
                 FROM subject_students
                 JOIN subjects ON subjects.id = subject_students.subject_id
                 WHERE subject_students.student_id = ?

@@ -12,7 +12,7 @@ import torch
 from facenet_pytorch import InceptionResnetV1
 from facenet_pytorch.models.mtcnn import fixed_image_standardization
 
-from config import FACE_RECOGNITION_MODEL, FACE_RECOGNITION_THRESHOLD
+from config import FACE_RECOGNITION_MARGIN, FACE_RECOGNITION_MODEL, FACE_RECOGNITION_THRESHOLD
 from modules.database import get_connection, init_db
 
 
@@ -119,17 +119,20 @@ def calculate_similarity(source_encoding: np.ndarray, stored_encoding: np.ndarra
 class FaceRecognizer:
     """Compare a cropped face image with stored FaceNet embeddings."""
 
-    def __init__(self, threshold: float = FACE_RECOGNITION_THRESHOLD) -> None:
+    def __init__(
+        self,
+        threshold: float = FACE_RECOGNITION_THRESHOLD,
+        margin: float = FACE_RECOGNITION_MARGIN,
+    ) -> None:
         self.threshold = threshold
+        self.margin = margin
         self.model_name = FACE_RECOGNITION_MODEL
 
     def recognize(self, face_image: np.ndarray) -> dict[str, Any]:
         init_db(verbose=False)
         target_encoding = extract_face_encoding(face_image)
 
-        best_student_id: int | None = None
-        best_distance: float | None = None
-        best_similarity: float | None = None
+        candidates: list[dict[str, Any]] = []
 
         with get_connection() as connection:
             rows = connection.execute(
@@ -149,17 +152,46 @@ class FaceRecognizer:
                 print(f"잘못된 얼굴 임베딩을 건너뜁니다. student_id={row['id']}: {error}")
                 continue
 
-            if best_distance is None or distance < best_distance:
-                best_distance = distance
-                best_similarity = similarity
-                best_student_id = int(row["id"])
+            candidates.append(
+                {
+                    "student_id": int(row["id"]),
+                    "distance": distance,
+                    "similarity": similarity,
+                }
+            )
 
-        matched = best_distance is not None and best_distance <= self.threshold
+        candidates.sort(key=lambda candidate: candidate["distance"])
+        top1 = candidates[0] if candidates else None
+        top2 = candidates[1] if len(candidates) >= 2 else None
+
+        best_student_id = int(top1["student_id"]) if top1 is not None else None
+        best_distance = float(top1["distance"]) if top1 is not None else None
+        best_similarity = float(top1["similarity"]) if top1 is not None else None
+        second_distance = float(top2["distance"]) if top2 is not None else None
+        second_student_id = int(top2["student_id"]) if top2 is not None else None
+        distance_margin = (
+            second_distance - best_distance
+            if second_distance is not None and best_distance is not None
+            else None
+        )
+
+        threshold_pass = best_distance is not None and best_distance < self.threshold
+        margin_pass = distance_margin is None or distance_margin >= self.margin
+        ambiguous = bool(threshold_pass and not margin_pass)
+        matched = bool(threshold_pass and margin_pass)
 
         return {
             "student_id": best_student_id if matched else None,
             "distance": best_distance,
             "similarity": best_similarity,
+            "second_student_id": second_student_id,
+            "second_distance": second_distance,
+            "distance_margin": distance_margin,
+            "threshold": self.threshold,
+            "margin_threshold": self.margin,
+            "threshold_pass": threshold_pass,
+            "margin_pass": margin_pass,
+            "ambiguous": ambiguous,
             "matched": matched,
         }
 
