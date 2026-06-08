@@ -92,6 +92,50 @@ def _create_subjects_table(cursor: sqlite3.Cursor) -> None:
     )
 
 
+def _create_classrooms_table(cursor: sqlite3.Cursor) -> None:
+    cursor.execute(
+        """
+        CREATE TABLE IF NOT EXISTS classrooms (
+            id INTEGER PRIMARY KEY AUTOINCREMENT,
+            classroom_name TEXT NOT NULL UNIQUE,
+            building_name TEXT,
+            floor TEXT,
+            description TEXT,
+            is_active INTEGER DEFAULT 1,
+            created_at TEXT NOT NULL
+        )
+        """
+    )
+
+
+def _ensure_classrooms_columns(connection: sqlite3.Connection) -> None:
+    if not _table_exists(connection, "classrooms"):
+        return
+
+    columns = _get_columns(connection, "classrooms")
+    missing_columns = {
+        "building_name": "TEXT",
+        "floor": "TEXT",
+        "description": "TEXT",
+        "is_active": "INTEGER DEFAULT 1",
+        "created_at": "TEXT",
+    }
+    for column_name, column_type in missing_columns.items():
+        if column_name not in columns:
+            connection.execute(f"ALTER TABLE classrooms ADD COLUMN {column_name} {column_type}")
+
+    try:
+        connection.execute(
+            """
+            CREATE UNIQUE INDEX IF NOT EXISTS idx_classrooms_classroom_name
+            ON classrooms(classroom_name)
+            """
+        )
+    except sqlite3.IntegrityError:
+        # Existing duplicate names should not block server startup. New databases still get UNIQUE.
+        pass
+
+
 def _ensure_subjects_columns(connection: sqlite3.Connection) -> None:
     if not _table_exists(connection, "subjects"):
         return
@@ -431,6 +475,8 @@ def reset_attendance_tables() -> None:
         cursor.execute("DROP TABLE IF EXISTS attendance")
         cursor.execute("DROP TABLE IF EXISTS attendance_sessions")
         _create_students_table(cursor)
+        _create_classrooms_table(cursor)
+        _ensure_classrooms_columns(connection)
         _create_subjects_table(cursor)
         _ensure_subjects_columns(connection)
         _create_subject_students_table(cursor)
@@ -449,6 +495,8 @@ def init_db(verbose: bool = True) -> None:
         connection.execute("PRAGMA foreign_keys = OFF")
         cursor = connection.cursor()
         _create_students_table(cursor)
+        _create_classrooms_table(cursor)
+        _ensure_classrooms_columns(connection)
         _create_subjects_table(cursor)
         _ensure_subjects_columns(connection)
         _create_subject_students_table(cursor)

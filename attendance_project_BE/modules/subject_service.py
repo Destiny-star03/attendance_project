@@ -15,11 +15,13 @@ def _subject_payload(row: sqlite3.Row | None) -> dict[str, Any] | None:
     if row is None:
         return None
 
+    classroom_name = row["classroom"] if "classroom" in row.keys() else None
     payload = {
         "subject_id": row["id"],
         "subject_name": row["subject_name"],
         "professor_name": row["professor_name"],
-        "classroom": row["classroom"] if "classroom" in row.keys() else None,
+        "classroom": classroom_name,
+        "classroom_name": classroom_name,
         "classroom_id": row["classroom_id"] if "classroom_id" in row.keys() else None,
         "day_of_week": row["day_of_week"] if "day_of_week" in row.keys() else None,
         "start_time": row["start_time"] if "start_time" in row.keys() else None,
@@ -41,6 +43,17 @@ def _student_payload(row: sqlite3.Row) -> dict[str, Any]:
     }
 
 
+def _classroom_name_by_id(connection: sqlite3.Connection, classroom_id: int | None) -> str | None:
+    if classroom_id is None:
+        return None
+
+    row = connection.execute(
+        "SELECT classroom_name FROM classrooms WHERE id = ? LIMIT 1",
+        (classroom_id,),
+    ).fetchone()
+    return row["classroom_name"] if row is not None else None
+
+
 def _fetch_subject(connection: sqlite3.Connection, subject_id: int) -> sqlite3.Row | None:
     return connection.execute(
         """
@@ -48,7 +61,7 @@ def _fetch_subject(connection: sqlite3.Connection, subject_id: int) -> sqlite3.R
             subjects.id,
             subjects.subject_name,
             subjects.professor_name,
-            subjects.classroom,
+            COALESCE(classrooms.classroom_name, subjects.classroom) AS classroom,
             subjects.classroom_id,
             subjects.day_of_week,
             subjects.start_time,
@@ -57,6 +70,7 @@ def _fetch_subject(connection: sqlite3.Connection, subject_id: int) -> sqlite3.R
             COUNT(subject_students.id) AS student_count
         FROM subjects
         LEFT JOIN subject_students ON subject_students.subject_id = subjects.id
+        LEFT JOIN classrooms ON classrooms.id = subjects.classroom_id
         WHERE subjects.id = ?
         GROUP BY subjects.id
         """,
@@ -94,6 +108,12 @@ def create_subject(
             return {"success": False, "message": "과목명을 입력해 주세요.", "subject": None}
 
         with get_connection() as connection:
+            classroom_name = _classroom_name_by_id(connection, classroom_id)
+            if classroom_id is not None and classroom_name is None:
+                return {"success": False, "message": "강의실을 찾을 수 없습니다.", "subject": None}
+            if normalized_classroom is None:
+                normalized_classroom = classroom_name
+
             cursor = connection.execute(
                 """
                 INSERT INTO subjects (
@@ -143,7 +163,7 @@ def get_subjects() -> dict[str, Any]:
                     subjects.id,
                     subjects.subject_name,
                     subjects.professor_name,
-                    subjects.classroom,
+                    COALESCE(classrooms.classroom_name, subjects.classroom) AS classroom,
                     subjects.classroom_id,
                     subjects.day_of_week,
                     subjects.start_time,
@@ -152,6 +172,7 @@ def get_subjects() -> dict[str, Any]:
                     COUNT(subject_students.id) AS student_count
                 FROM subjects
                 LEFT JOIN subject_students ON subject_students.subject_id = subjects.id
+                LEFT JOIN classrooms ON classrooms.id = subjects.classroom_id
                 GROUP BY subjects.id
                 ORDER BY subjects.id DESC
                 """
@@ -213,6 +234,12 @@ def update_subject(
 
             if not next_name:
                 return {"success": False, "message": "과목명을 입력해 주세요.", "subject": None}
+
+            classroom_name = _classroom_name_by_id(connection, next_classroom_id)
+            if next_classroom_id is not None and classroom_name is None:
+                return {"success": False, "message": "강의실을 찾을 수 없습니다.", "subject": None}
+            if classroom is None and classroom_name is not None:
+                next_classroom = classroom_name
 
             connection.execute(
                 """
@@ -394,7 +421,7 @@ def get_student_subjects(student_id: int) -> dict[str, Any]:
                     subjects.id,
                     subjects.subject_name,
                     subjects.professor_name,
-                    subjects.classroom,
+                    COALESCE(classrooms.classroom_name, subjects.classroom) AS classroom,
                     subjects.classroom_id,
                     subjects.day_of_week,
                     subjects.start_time,
@@ -402,6 +429,7 @@ def get_student_subjects(student_id: int) -> dict[str, Any]:
                     subjects.created_at
                 FROM subject_students
                 JOIN subjects ON subjects.id = subject_students.subject_id
+                LEFT JOIN classrooms ON classrooms.id = subjects.classroom_id
                 WHERE subject_students.student_id = ?
                 ORDER BY subjects.id DESC
                 """,

@@ -1,4 +1,4 @@
-from __future__ import annotations
+﻿from __future__ import annotations
 
 import csv
 from datetime import datetime
@@ -31,7 +31,7 @@ from modules.attendance_service import (
     list_sessions,
     mark_attendance,
 )
-from modules import subject_service
+from modules import classroom_service, subject_service
 from modules.attendance_state import AttendanceRecognitionTracker
 from modules.detector import FaceDetector
 from modules.enrollment_service import EnrollmentService
@@ -87,6 +87,22 @@ class SubjectSessionCreateRequest(BaseModel):
     day_of_week: str | None = None
     activate: bool = False
 
+
+class ClassroomCreateRequest(BaseModel):
+    classroom_name: str
+    building_name: str | None = None
+    floor: str | None = None
+    description: str | None = None
+
+
+class ClassroomUpdateRequest(BaseModel):
+    classroom_name: str | None = None
+    building_name: str | None = None
+    floor: str | None = None
+    description: str | None = None
+    is_active: bool | None = None
+
+
 class StudentRegistrationStartRequest(BaseModel):
     student_no: str
     name: str
@@ -129,11 +145,11 @@ def _get_recognizer() -> FaceRecognizer:
 
 async def _read_upload_image(image: UploadFile | None) -> bytes:
     if image is None:
-        raise ValueError("이미지 파일을 첨부해 주세요.")
+        raise ValueError("?대?吏 ?뚯씪??泥⑤???二쇱꽭??")
 
     data = await image.read()
     if not data:
-        raise ValueError("이미지 파일이 비어 있습니다.")
+        raise ValueError("?대?吏 ?뚯씪??鍮꾩뼱 ?덉뒿?덈떎.")
 
     return data
 
@@ -207,7 +223,7 @@ def _attendance_response(result: dict[str, Any]) -> dict[str, Any]:
     success = bool(result.get("success", False))
     return {
         "success": success,
-        "message": "출석 목록 조회 성공" if success else result.get("message", "출석 목록을 조회하지 못했습니다."),
+        "message": "異쒖꽍 紐⑸줉 議고쉶 ?깃났" if success else result.get("message", "異쒖꽍 紐⑸줉??議고쉶?섏? 紐삵뻽?듬땲??"),
         "session": _session_payload(result.get("session")),
         "date": result.get("date"),
         "items": [_attendance_record_payload(record) for record in result.get("items", [])],
@@ -246,7 +262,7 @@ def _enroll_face_failure_response(
         return {
             "success": False,
             "status": "image_error",
-            "message": "이미지를 읽을 수 없습니다.",
+            "message": "?대?吏瑜??쎌쓣 ???놁뒿?덈떎.",
             "enroll_id": enroll_id,
             "pose": pose,
         }
@@ -255,7 +271,7 @@ def _enroll_face_failure_response(
         return {
             "success": False,
             "status": "multiple_faces",
-            "message": "한 명만 촬영해 주세요.",
+            "message": "??紐낅쭔 珥ъ쁺??二쇱꽭??",
             "enroll_id": enroll_id,
             "pose": pose,
         }
@@ -263,7 +279,7 @@ def _enroll_face_failure_response(
     return {
         "success": False,
         "status": "no_face",
-        "message": "얼굴을 찾지 못했습니다.",
+        "message": "?쇨뎬??李얠? 紐삵뻽?듬땲??",
         "enroll_id": enroll_id,
         "pose": pose,
     }
@@ -292,7 +308,7 @@ def _face_failure_response(faces: list[dict[str, Any]] | None) -> dict[str, Any]
             "success": False,
             "matched": False,
             "status": "image_error",
-            "message": "이미지를 읽을 수 없습니다.",
+            "message": "?대?吏瑜??쎌쓣 ???놁뒿?덈떎.",
         }
 
     if len(faces) >= 2:
@@ -300,14 +316,14 @@ def _face_failure_response(faces: list[dict[str, Any]] | None) -> dict[str, Any]
             "success": False,
             "matched": False,
             "status": "multiple_faces",
-            "message": "한 명만 촬영해 주세요.",
+            "message": "??紐낅쭔 珥ъ쁺??二쇱꽭??",
         }
 
     return {
         "success": False,
         "matched": False,
         "status": "no_face",
-        "message": "얼굴을 찾지 못했습니다.",
+        "message": "?쇨뎬??李얠? 紐삵뻽?듬땲??",
     }
 
 def _csv_file_name(session_id: int | None, date: str | None, session: dict[str, Any] | None) -> str:
@@ -374,7 +390,7 @@ def create_session(request: SessionCreateRequest) -> dict[str, Any]:
 def sessions() -> dict[str, Any]:
     return {
         "success": True,
-        "message": "출석 세션 목록 조회 성공",
+        "message": "異쒖꽍 ?몄뀡 紐⑸줉 議고쉶 ?깃났",
         "items": [_session_payload(session) for session in list_sessions()],
     }
 
@@ -385,13 +401,13 @@ def active_session() -> dict[str, Any]:
     if session is None:
         return {
             "success": False,
-            "message": "활성 출석 세션이 없습니다.",
+            "message": "?쒖꽦 異쒖꽍 ?몄뀡???놁뒿?덈떎.",
             "session": None,
         }
 
     return {
         "success": True,
-        "message": "활성 출석 세션 조회 성공",
+        "message": "?쒖꽦 異쒖꽍 ?몄뀡 議고쉶 ?깃났",
         "session": _session_payload(session),
     }
 
@@ -428,6 +444,43 @@ def close_attendance_session_api(session_id: int) -> dict[str, Any]:
     if result.get("session") is not None:
         result["session"] = _session_payload(result["session"])
     return result
+
+
+@app.get("/classrooms", response_model=None)
+def classrooms_api(active_only: bool = True) -> dict[str, Any]:
+    return classroom_service.get_classrooms(active_only=active_only)
+
+
+@app.post("/classrooms", response_model=None)
+def create_classroom_api(request: ClassroomCreateRequest) -> dict[str, Any]:
+    return classroom_service.create_classroom(
+        classroom_name=request.classroom_name,
+        building_name=request.building_name,
+        floor=request.floor,
+        description=request.description,
+    )
+
+
+@app.get("/classrooms/{classroom_id}", response_model=None)
+def classroom_detail_api(classroom_id: int) -> dict[str, Any]:
+    return classroom_service.get_classroom_by_id(classroom_id)
+
+
+@app.put("/classrooms/{classroom_id}", response_model=None)
+def update_classroom_api(classroom_id: int, request: ClassroomUpdateRequest) -> dict[str, Any]:
+    return classroom_service.update_classroom(
+        classroom_id=classroom_id,
+        classroom_name=request.classroom_name,
+        building_name=request.building_name,
+        floor=request.floor,
+        description=request.description,
+        is_active=request.is_active,
+    )
+
+
+@app.delete("/classrooms/{classroom_id}", response_model=None)
+def delete_classroom_api(classroom_id: int) -> dict[str, Any]:
+    return classroom_service.delete_classroom(classroom_id)
 
 
 
@@ -524,11 +577,11 @@ def start_student_registration_session(request: StudentRegistrationStartRequest)
         department = request.department.strip() if request.department else None
 
         if not student_no:
-            return {"success": False, "message": "학번을 입력해 주세요."}
+            return {"success": False, "message": "?숇쾲???낅젰??二쇱꽭??"}
         if not name:
-            return {"success": False, "message": "이름을 입력해 주세요."}
+            return {"success": False, "message": "?대쫫???낅젰??二쇱꽭??"}
         if is_student_no_exists(student_no):
-            return {"success": False, "message": "이미 등록된 학번입니다."}
+            return {"success": False, "message": "?대? ?깅줉???숇쾲?낅땲??"}
 
         registration = student_registration_tracker.start(
             student_no=student_no,
@@ -538,7 +591,7 @@ def start_student_registration_session(request: StudentRegistrationStartRequest)
         registration_payload = _student_registration_response(registration)
         return {
             "success": True,
-            "message": "학생 얼굴 등록 세션이 시작되었습니다.",
+            "message": "?숈깮 ?쇨뎬 ?깅줉 ?몄뀡???쒖옉?섏뿀?듬땲??",
             "registration_id": registration_payload["registration_id"],
             "directions": registration_payload["directions"],
             "registration": registration_payload,
@@ -547,7 +600,7 @@ def start_student_registration_session(request: StudentRegistrationStartRequest)
     except Exception as error:
         return {
             "success": False,
-            "message": f"학생 얼굴 등록 세션 시작 중 오류가 발생했습니다: {error}",
+            "message": f"?숈깮 ?쇨뎬 ?깅줉 ?몄뀡 ?쒖옉 以??ㅻ쪟媛 諛쒖깮?덉뒿?덈떎: {error}",
         }
 
 
@@ -577,7 +630,7 @@ async def add_student_registration_frame(
         if not add_result.get("success"):
             return {
                 "success": False,
-                "message": add_result.get("message", "얼굴 프레임을 추가하지 못했습니다."),
+                "message": add_result.get("message", "?쇨뎬 ?꾨젅?꾩쓣 異붽??섏? 紐삵뻽?듬땲??"),
                 "registration_id": registration_id,
                 "direction": add_result.get("direction", direction),
                 "directions": add_result.get("directions"),
@@ -590,7 +643,7 @@ async def add_student_registration_frame(
 
         return {
             "success": True,
-            "message": add_result.get("message", "얼굴 프레임이 추가되었습니다."),
+            "message": add_result.get("message", "?쇨뎬 ?꾨젅?꾩씠 異붽??섏뿀?듬땲??"),
             "registration_id": registration_id,
             "direction": add_result.get("direction", direction),
             "accepted_count": add_result.get("accepted_count"),
@@ -605,7 +658,7 @@ async def add_student_registration_frame(
             "success": False,
             "registration_id": registration_id,
             "direction": direction,
-            "message": "YOLO26 얼굴 검출 모델 파일을 찾을 수 없습니다. 학습 결과 best.pt를 models/yolo26_face.pt로 배치하세요.",
+            "message": "YOLO26 ?쇨뎬 寃異?紐⑤뜽 ?뚯씪??李얠쓣 ???놁뒿?덈떎. ?숈뒿 寃곌낵 best.pt瑜?models/yolo26_face.pt濡?諛곗튂?섏꽭??",
         }
     except RuntimeError as error:
         return {
@@ -626,7 +679,7 @@ async def add_student_registration_frame(
             "success": False,
             "registration_id": registration_id,
             "direction": direction,
-            "message": f"학생 얼굴 프레임 추가 중 오류가 발생했습니다: {error}",
+            "message": f"?숈깮 ?쇨뎬 ?꾨젅??異붽? 以??ㅻ쪟媛 諛쒖깮?덉뒿?덈떎: {error}",
         }
 
 
@@ -637,14 +690,14 @@ def complete_student_registration_session(registration_id: str) -> dict[str, Any
         if registration_session is None:
             return {
                 "success": False,
-                "message": "등록 세션을 찾을 수 없습니다.",
+                "message": "?깅줉 ?몄뀡??李얠쓣 ???놁뒿?덈떎.",
                 "registration_id": registration_id,
             }
 
         if is_student_no_exists(registration_session.student_no):
             return {
                 "success": False,
-                "message": "이미 등록된 학번입니다.",
+                "message": "?대? ?깅줉???숇쾲?낅땲??",
                 "registration_id": registration_id,
                 **student_registration_tracker.progress_payload(registration_session),
             }
@@ -661,7 +714,7 @@ def complete_student_registration_session(registration_id: str) -> dict[str, Any
         if not save_result.get("success"):
             return {
                 "success": False,
-                "message": save_result.get("message", "학생 정보를 저장하지 못했습니다."),
+                "message": save_result.get("message", "?숈깮 ?뺣낫瑜???ν븯吏 紐삵뻽?듬땲??"),
                 "registration_id": registration_id,
                 **student_registration_tracker.progress_payload(registration_session),
             }
@@ -671,7 +724,7 @@ def complete_student_registration_session(registration_id: str) -> dict[str, Any
 
         return {
             "success": True,
-            "message": "학생 등록이 완료되었습니다.",
+            "message": "?숈깮 ?깅줉???꾨즺?섏뿀?듬땲??",
             "registration_id": registration_id,
             "student": {
                 "student_id": save_result["student_id"],
@@ -699,7 +752,7 @@ def complete_student_registration_session(registration_id: str) -> dict[str, Any
     except Exception as error:
         return {
             "success": False,
-            "message": f"학생 등록 완료 처리 중 오류가 발생했습니다: {error}",
+            "message": f"?숈깮 ?깅줉 ?꾨즺 泥섎━ 以??ㅻ쪟媛 諛쒖깮?덉뒿?덈떎: {error}",
             "registration_id": registration_id,
         }
 
@@ -709,7 +762,7 @@ def cancel_student_registration_session(registration_id: str) -> dict[str, Any]:
     removed = student_registration_tracker.cancel(registration_id)
     return {
         "success": removed,
-        "message": "학생 얼굴 등록 세션이 취소되었습니다." if removed else "등록 세션을 찾을 수 없습니다.",
+        "message": "?숈깮 ?쇨뎬 ?깅줉 ?몄뀡??痍⑥냼?섏뿀?듬땲??" if removed else "?깅줉 ?몄뀡??李얠쓣 ???놁뒿?덈떎.",
         "registration_id": registration_id,
     }
 
@@ -729,11 +782,11 @@ async def start_student_enrollment(
         resolved_department = str(department_value).strip() if department_value else None
 
         if not resolved_student_no:
-            return {"success": False, "message": "학번을 입력해 주세요."}
+            return {"success": False, "message": "?숇쾲???낅젰??二쇱꽭??"}
         if not resolved_name:
-            return {"success": False, "message": "이름을 입력해 주세요."}
+            return {"success": False, "message": "?대쫫???낅젰??二쇱꽭??"}
         if is_student_no_exists(resolved_student_no) and not ALLOW_UPDATE_EXISTING_STUDENT_FACE:
-            return {"success": False, "message": "이미 등록된 학번입니다."}
+            return {"success": False, "message": "?대? ?깅줉???숇쾲?낅땲??"}
 
         result = enrollment_service.start_enrollment(
             student_no=resolved_student_no,
@@ -745,7 +798,7 @@ async def start_student_enrollment(
     except Exception as error:
         return {
             "success": False,
-            "message": f"얼굴 등록 세션 시작 중 오류가 발생했습니다: {error}",
+            "message": f"?쇨뎬 ?깅줉 ?몄뀡 ?쒖옉 以??ㅻ쪟媛 諛쒖깮?덉뒿?덈떎: {error}",
         }
 
 
@@ -773,7 +826,7 @@ async def add_student_enrollment_frame(
         return {
             "success": False,
             "status": "model_error",
-            "message": "YOLO26 얼굴 검출 모델 파일을 찾을 수 없습니다. 학습 결과 best.pt를 models/yolo26_face.pt로 배치하세요.",
+            "message": "YOLO26 ?쇨뎬 寃異?紐⑤뜽 ?뚯씪??李얠쓣 ???놁뒿?덈떎. ?숈뒿 寃곌낵 best.pt瑜?models/yolo26_face.pt濡?諛곗튂?섏꽭??",
             "enroll_id": enroll_id,
             "pose": pose,
         }
@@ -797,7 +850,7 @@ async def add_student_enrollment_frame(
         return {
             "success": False,
             "status": "server_error",
-            "message": f"얼굴 프레임 등록 중 오류가 발생했습니다: {error}",
+            "message": f"?쇨뎬 ?꾨젅???깅줉 以??ㅻ쪟媛 諛쒖깮?덉뒿?덈떎: {error}",
             "enroll_id": enroll_id,
             "pose": pose,
         }
@@ -817,7 +870,7 @@ async def complete_student_enrollment(
         data = {} if enroll_id else await _read_request_data(request)
         resolved_enroll_id = str(enroll_id or data.get("enroll_id") or "").strip()
         if not resolved_enroll_id:
-            return {"success": False, "status": "bad_request", "message": "enroll_id를 입력해 주세요."}
+            return {"success": False, "status": "bad_request", "message": "enroll_id瑜??낅젰??二쇱꽭??"}
 
         result = enrollment_service.complete_enrollment(resolved_enroll_id)
         if not result.get("success"):
@@ -831,7 +884,7 @@ async def complete_student_enrollment(
         if is_student_no_exists(student_no) and not ALLOW_UPDATE_EXISTING_STUDENT_FACE:
             return {
                 "success": False,
-                "message": "이미 등록된 학번입니다.",
+                "message": "?대? ?깅줉???숇쾲?낅땲??",
                 "enroll_id": resolved_enroll_id,
             }
 
@@ -845,7 +898,7 @@ async def complete_student_enrollment(
         if not save_result.get("success"):
             return {
                 "success": False,
-                "message": save_result.get("message", "학생 얼굴 정보를 저장하지 못했습니다."),
+                "message": save_result.get("message", "?숈깮 ?쇨뎬 ?뺣낫瑜???ν븯吏 紐삵뻽?듬땲??"),
                 "enroll_id": resolved_enroll_id,
             }
 
@@ -854,7 +907,7 @@ async def complete_student_enrollment(
         return {
             "success": True,
             "status": "completed",
-            "message": "학생 얼굴 등록이 완료되었습니다.",
+            "message": "?숈깮 ?쇨뎬 ?깅줉???꾨즺?섏뿀?듬땲??",
             "enroll_id": resolved_enroll_id,
             "created": save_result.get("created", False),
             "updated": save_result.get("updated", False),
@@ -869,7 +922,7 @@ async def complete_student_enrollment(
     except Exception as error:
         return {
             "success": False,
-            "message": f"학생 얼굴 등록 완료 중 오류가 발생했습니다: {error}",
+            "message": f"?숈깮 ?쇨뎬 ?깅줉 ?꾨즺 以??ㅻ쪟媛 諛쒖깮?덉뒿?덈떎: {error}",
         }
 
 
@@ -882,7 +935,7 @@ def cancel_student_enrollment(enroll_id: str) -> dict[str, Any]:
 def students() -> dict[str, Any]:
     return {
         "success": True,
-        "message": "학생 목록 조회 성공",
+        "message": "?숈깮 紐⑸줉 議고쉶 ?깃났",
         "items": [_student_payload(student) for student in get_all_students()],
     }
 
@@ -894,7 +947,7 @@ def student_stats(student_id: int) -> dict[str, Any]:
         return {
             "success": False,
             "status": "not_found",
-            "message": "학생을 찾을 수 없습니다.",
+            "message": "?숈깮??李얠쓣 ???놁뒿?덈떎.",
             "student": None,
             "stats": {
                 "attendance_count": 0,
@@ -908,7 +961,7 @@ def student_stats(student_id: int) -> dict[str, Any]:
         return {
             "success": False,
             "status": "server_error",
-            "message": stats.get("message", "학생 통계를 조회하지 못했습니다."),
+            "message": stats.get("message", "?숈깮 ?듦퀎瑜?議고쉶?섏? 紐삵뻽?듬땲??"),
             "student": _student_payload(student),
             "stats": {
                 "attendance_count": 0,
@@ -919,7 +972,7 @@ def student_stats(student_id: int) -> dict[str, Any]:
 
     return {
         "success": True,
-        "message": "학생 통계 조회 성공",
+        "message": "?숈깮 ?듦퀎 議고쉶 ?깃났",
         "student": _student_payload(student),
         "stats": {
             "attendance_count": stats.get("attendance_count", 0),
@@ -939,7 +992,7 @@ async def create_student(
         if is_student_no_exists(student_no):
             return {
                 "success": False,
-                "message": "이미 등록된 학번입니다.",
+                "message": "?대? ?깅줉???숇쾲?낅땲??",
             }
 
         image_bytes = await _read_upload_image(image)
@@ -952,12 +1005,12 @@ async def create_student(
         if not save_result.get("success"):
             return {
                 "success": False,
-                "message": save_result.get("message", "학생 등록에 실패했습니다."),
+                "message": save_result.get("message", "?숈깮 ?깅줉???ㅽ뙣?덉뒿?덈떎."),
             }
 
         return {
             "success": True,
-            "message": "학생 등록이 완료되었습니다.",
+            "message": "?숈깮 ?깅줉???꾨즺?섏뿀?듬땲??",
             "student": {
                 "student_id": save_result["student_id"],
                 "student_no": student_no,
@@ -969,14 +1022,14 @@ async def create_student(
     except FileNotFoundError:
         return {
             "success": False,
-            "message": "YOLO26 얼굴 검출 모델 파일을 찾을 수 없습니다. 학습 결과 best.pt를 models/yolo26_face.pt로 배치하세요.",
+            "message": "YOLO26 ?쇨뎬 寃異?紐⑤뜽 ?뚯씪??李얠쓣 ???놁뒿?덈떎. ?숈뒿 寃곌낵 best.pt瑜?models/yolo26_face.pt濡?諛곗튂?섏꽭??",
         }
     except RuntimeError as error:
         return {"success": False, "message": str(error)}
     except ValueError as error:
         return {"success": False, "message": str(error)}
     except Exception as error:
-        return {"success": False, "message": f"학생 등록 중 오류가 발생했습니다: {error}"}
+        return {"success": False, "message": f"?숈깮 ?깅줉 以??ㅻ쪟媛 諛쒖깮?덉뒿?덈떎: {error}"}
 
 
 @app.post("/attendance/recognize")
@@ -1002,7 +1055,7 @@ async def recognize_attendance(
                 "success": True,
                 "matched": False,
                 "status": "ambiguous_face",
-                "message": "얼굴 인식 결과가 명확하지 않습니다. 다시 시도해 주세요.",
+                "message": "?쇨뎬 ?몄떇 寃곌낵媛 紐낇솗?섏? ?딆뒿?덈떎. ?ㅼ떆 ?쒕룄??二쇱꽭??",
                 "recognition": recognition_data,
             }
 
@@ -1012,7 +1065,7 @@ async def recognize_attendance(
                 "success": True,
                 "matched": False,
                 "status": "unknown",
-                "message": "미등록 사용자",
+                "message": "미등록 사용자입니다.",
                 "recognition": recognition_data,
             }
 
@@ -1023,7 +1076,7 @@ async def recognize_attendance(
                 "success": True,
                 "matched": False,
                 "status": "unknown",
-                "message": "미등록 사용자",
+                "message": "미등록 사용자입니다.",
                 "recognition": recognition_data,
             }
 
@@ -1034,12 +1087,12 @@ async def recognize_attendance(
                 "success": False,
                 "matched": True,
                 "status": "no_active_session",
-                "message": "활성 출석 세션이 없습니다.",
+                "message": "?쒖꽦 異쒖꽍 ?몄뀡???놁뒿?덈떎.",
                 "student": _student_payload(student),
                 "recognition": recognition_data,
                 "attendance": {
                     "marked": False,
-                    "message": "출석 세션 없음",
+                    "message": "異쒖꽍 ?몄뀡 ?놁쓬",
                 },
             }
 
@@ -1055,13 +1108,13 @@ async def recognize_attendance(
                 "success": False,
                 "matched": True,
                 "status": "not_enrolled",
-                "message": "해당 수업의 수강생이 아닙니다.",
+                "message": "?대떦 ?섏뾽???섍컯?앹씠 ?꾨떃?덈떎.",
                 "session": session_data,
                 "student": student_data,
                 "recognition": recognition_data,
                 "attendance": {
                     "marked": False,
-                    "message": "수강생 아님",
+                    "message": "?섍컯???꾨떂",
                 },
             }
 
@@ -1071,13 +1124,13 @@ async def recognize_attendance(
                 "success": True,
                 "matched": True,
                 "status": "already_attended",
-                "message": "이미 출석함",
+                "message": "이미 출석했습니다.",
                 "session": session_data,
                 "student": student_data,
                 "recognition": recognition_data,
                 "attendance": {
                     "marked": False,
-                    "message": "이미 출석함",
+                    "message": "이미 출석했습니다.",
                 },
             }
 
@@ -1091,7 +1144,7 @@ async def recognize_attendance(
                 "success": True,
                 "matched": True,
                 "status": "recognizing",
-                "message": "인식 중",
+                "message": "인식 중입니다.",
                 "hold_seconds": progress["hold_seconds"],
                 "elapsed_seconds": round(progress["elapsed_seconds"], 3),
                 "remaining_seconds": round(progress["remaining_seconds"], 3),
@@ -1100,7 +1153,7 @@ async def recognize_attendance(
                 "recognition": recognition_data,
                 "attendance": {
                     "marked": False,
-                    "message": "미출석",
+                    "message": "아직 출석 처리되지 않았습니다.",
                 },
             }
 
@@ -1121,18 +1174,18 @@ async def recognize_attendance(
                 "success": False,
                 "matched": True,
                 "status": "attendance_error",
-                "message": attendance_result.get("message", "출석 처리 오류"),
+                "message": attendance_result.get("message", "異쒖꽍 泥섎━ ?ㅻ쪟"),
                 "session": session_data,
                 "student": student_data,
                 "recognition": recognition_data,
                 "attendance": {
                     "marked": False,
-                    "message": attendance_result.get("message", "출석 처리 오류"),
+                    "message": attendance_result.get("message", "異쒖꽍 泥섎━ ?ㅻ쪟"),
                 },
             }
 
-        attendance_message = attendance_result.get("message", "출석 완료")
-        status = "already_attended" if attendance_message == "이미 출석함" else "attended"
+        attendance_message = attendance_result.get("message", "異쒖꽍 ?꾨즺")
+        status = "already_attended" if attendance_message == "이미 출석했습니다." else "attended"
         return {
             "success": True,
             "matched": True,
@@ -1155,7 +1208,7 @@ async def recognize_attendance(
             "success": False,
             "matched": False,
             "status": "model_error",
-            "message": "YOLO26 얼굴 검출 모델 파일을 찾을 수 없습니다. 학습 결과 best.pt를 models/yolo26_face.pt로 배치하세요.",
+            "message": "YOLO26 ?쇨뎬 寃異?紐⑤뜽 ?뚯씪??李얠쓣 ???놁뒿?덈떎. ?숈뒿 寃곌낵 best.pt瑜?models/yolo26_face.pt濡?諛곗튂?섏꽭??",
         }
     except RuntimeError as error:
         return {"success": False, "matched": False, "status": "runtime_error", "message": str(error)}
@@ -1166,7 +1219,7 @@ async def recognize_attendance(
             "success": False,
             "matched": False,
             "status": "server_error",
-            "message": f"출석 인식 중 오류가 발생했습니다: {error}",
+            "message": f"異쒖꽍 ?몄떇 以??ㅻ쪟媛 諛쒖깮?덉뒿?덈떎: {error}",
         }
 
 
@@ -1183,7 +1236,7 @@ def attendance(session_id: int | None = None, date: str | None = None) -> dict[s
     except ValueError:
         return {
             "success": False,
-            "message": "날짜 형식은 YYYY-MM-DD여야 합니다.",
+            "message": "?좎쭨 ?뺤떇? YYYY-MM-DD?ъ빞 ?⑸땲??",
             "session": None,
             "items": [],
         }
@@ -1197,13 +1250,13 @@ def attendance_export(session_id: int | None = None, date: str | None = None):
     try:
         normalized_date = _validate_date(date)
     except ValueError:
-        return {"success": False, "message": "날짜 형식은 YYYY-MM-DD여야 합니다."}
+        return {"success": False, "message": "?좎쭨 ?뺤떇? YYYY-MM-DD?ъ빞 ?⑸땲??"}
 
     result = get_attendance_records(session_id=session_id, date=normalized_date)
     if not result.get("success"):
         return {
             "success": False,
-            "message": result.get("message", "출석 기록을 조회할 수 없습니다."),
+            "message": result.get("message", "異쒖꽍 湲곕줉??議고쉶?????놁뒿?덈떎."),
         }
 
     file_name = _csv_file_name(session_id, normalized_date, result.get("session"))
@@ -1213,3 +1266,4 @@ def attendance_export(session_id: int | None = None, date: str | None = None):
         media_type="text/csv; charset=utf-8",
         filename=file_path.name,
     )
+

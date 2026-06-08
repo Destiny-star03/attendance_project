@@ -1,4 +1,4 @@
-from __future__ import annotations
+﻿from __future__ import annotations
 
 import argparse
 import sqlite3
@@ -9,7 +9,7 @@ from modules.database import get_connection, init_db
 
 
 ATTENDANCE_STATUS_PRESENT = "present"
-DEFAULT_SUBJECT_NAME = "기본 수업"
+DEFAULT_SUBJECT_NAME = "湲곕낯 ?섏뾽"
 
 
 def _today() -> str:
@@ -36,7 +36,7 @@ def _session_payload(row: sqlite3.Row | None) -> dict[str, Any] | None:
     return {
         "session_id": row["id"],
         "subject_name": subject_name,
-        "session_name": subject_name,  # 기존 API 호환용 별칭
+        "session_name": subject_name,  # 湲곗〈 API ?명솚??蹂꾩묶
         "subject_id": row["subject_id"] if "subject_id" in row.keys() else None,
         "classroom_id": row["classroom_id"] if "classroom_id" in row.keys() else None,
         "classroom_name": row["classroom_name"] if "classroom_name" in row.keys() else None,
@@ -55,8 +55,8 @@ def _fetch_session(connection: sqlite3.Connection, session_id: int) -> sqlite3.R
         SELECT
             attendance_sessions.id,
             attendance_sessions.subject_id,
-            attendance_sessions.classroom_id,
-            subjects.classroom AS classroom_name,
+            COALESCE(attendance_sessions.classroom_id, subjects.classroom_id) AS classroom_id,
+            COALESCE(classrooms.classroom_name, subjects.classroom) AS classroom_name,
             attendance_sessions.day_of_week,
             attendance_sessions.subject_name,
             attendance_sessions.class_date,
@@ -66,6 +66,7 @@ def _fetch_session(connection: sqlite3.Connection, session_id: int) -> sqlite3.R
             attendance_sessions.created_at
         FROM attendance_sessions
         LEFT JOIN subjects ON subjects.id = attendance_sessions.subject_id
+        LEFT JOIN classrooms ON classrooms.id = COALESCE(attendance_sessions.classroom_id, subjects.classroom_id)
         WHERE attendance_sessions.id = ?
         """,
         (session_id,),
@@ -135,14 +136,14 @@ def create_attendance_session(
 
         return {
             "success": True,
-            "message": "출석 세션이 생성되었습니다.",
+            "message": "수업 세션이 생성되었습니다.",
             "session": _session_payload(row),
         }
 
     except sqlite3.Error as error:
         return {
             "success": False,
-            "message": f"데이터베이스 오류가 발생했습니다: {error}",
+            "message": f"?곗씠?곕쿋?댁뒪 ?ㅻ쪟媛 諛쒖깮?덉뒿?덈떎: {error}",
             "session": None,
         }
 
@@ -157,7 +158,7 @@ def get_session_by_id(session_id: int) -> dict[str, Any] | None:
         return _session_payload(row)
 
     except sqlite3.Error as error:
-        print(f"데이터베이스 오류가 발생했습니다: {error}")
+        print(f"?곗씠?곕쿋?댁뒪 ?ㅻ쪟媛 諛쒖깮?덉뒿?덈떎: {error}")
         return None
 
 
@@ -171,17 +172,18 @@ def get_active_session() -> dict[str, Any] | None:
                 SELECT
                     attendance_sessions.id,
                     attendance_sessions.subject_id,
-                    attendance_sessions.classroom_id,
-                    subjects.classroom AS classroom_name,
-                    attendance_sessions.day_of_week,
+                    COALESCE(attendance_sessions.classroom_id, subjects.classroom_id) AS classroom_id,
+                    COALESCE(classrooms.classroom_name, subjects.classroom) AS classroom_name,
+                    COALESCE(attendance_sessions.day_of_week, subjects.day_of_week) AS day_of_week,
                     attendance_sessions.subject_name,
                     attendance_sessions.class_date,
-                    attendance_sessions.start_time,
-                    attendance_sessions.end_time,
+                    COALESCE(attendance_sessions.start_time, subjects.start_time) AS start_time,
+                    COALESCE(attendance_sessions.end_time, subjects.end_time) AS end_time,
                     attendance_sessions.is_active,
                     attendance_sessions.created_at
                 FROM attendance_sessions
                 LEFT JOIN subjects ON subjects.id = attendance_sessions.subject_id
+                LEFT JOIN classrooms ON classrooms.id = COALESCE(attendance_sessions.classroom_id, subjects.classroom_id)
                 WHERE attendance_sessions.is_active = 1
                 ORDER BY attendance_sessions.id DESC
                 LIMIT 1
@@ -191,7 +193,7 @@ def get_active_session() -> dict[str, Any] | None:
         return _session_payload(row)
 
     except sqlite3.Error as error:
-        print(f"데이터베이스 오류가 발생했습니다: {error}")
+        print(f"?곗씠?곕쿋?댁뒪 ?ㅻ쪟媛 諛쒖깮?덉뒿?덈떎: {error}")
         return None
 
 
@@ -219,31 +221,36 @@ def get_current_session_by_classroom(
                 SELECT
                     attendance_sessions.id,
                     attendance_sessions.subject_id,
-                    attendance_sessions.classroom_id,
-                    subjects.classroom AS classroom_name,
-                    attendance_sessions.day_of_week,
+                    COALESCE(attendance_sessions.classroom_id, subjects.classroom_id) AS classroom_id,
+                    COALESCE(classrooms.classroom_name, subjects.classroom) AS classroom_name,
+                    COALESCE(attendance_sessions.day_of_week, subjects.day_of_week) AS day_of_week,
                     attendance_sessions.subject_name,
                     attendance_sessions.class_date,
-                    attendance_sessions.start_time,
-                    attendance_sessions.end_time,
+                    COALESCE(attendance_sessions.start_time, subjects.start_time) AS start_time,
+                    COALESCE(attendance_sessions.end_time, subjects.end_time) AS end_time,
                     attendance_sessions.is_active,
                     attendance_sessions.created_at
                 FROM attendance_sessions
                 LEFT JOIN subjects ON subjects.id = attendance_sessions.subject_id
+                LEFT JOIN classrooms ON classrooms.id = COALESCE(attendance_sessions.classroom_id, subjects.classroom_id)
                 WHERE attendance_sessions.class_date = ?
-                  AND attendance_sessions.start_time IS NOT NULL
-                  AND attendance_sessions.end_time IS NOT NULL
-                  AND substr(attendance_sessions.start_time, 1, 5) <= ?
-                  AND substr(attendance_sessions.end_time, 1, 5) >= ?
+                  AND COALESCE(attendance_sessions.start_time, subjects.start_time) IS NOT NULL
+                  AND COALESCE(attendance_sessions.end_time, subjects.end_time) IS NOT NULL
+                  AND substr(COALESCE(attendance_sessions.start_time, subjects.start_time), 1, 5) <= ?
+                  AND substr(COALESCE(attendance_sessions.end_time, subjects.end_time), 1, 5) >= ?
                   AND (
                     (? IS NOT NULL AND (
                         attendance_sessions.classroom_id = ?
                         OR subjects.classroom_id = ?
+                        OR classrooms.id = ?
                     ))
-                    OR (? IS NOT NULL AND subjects.classroom = ?)
+                    OR (? IS NOT NULL AND (
+                        subjects.classroom = ?
+                        OR classrooms.classroom_name = ?
+                    ))
                   )
                 ORDER BY
-                    substr(attendance_sessions.start_time, 1, 5) ASC,
+                    substr(COALESCE(attendance_sessions.start_time, subjects.start_time), 1, 5) ASC,
                     attendance_sessions.created_at DESC,
                     attendance_sessions.id DESC
                 LIMIT 1
@@ -255,6 +262,8 @@ def get_current_session_by_classroom(
                     classroom_id,
                     classroom_id,
                     classroom_id,
+                    classroom_id,
+                    normalized_classroom_name,
                     normalized_classroom_name,
                     normalized_classroom_name,
                 ),
@@ -291,7 +300,7 @@ def get_or_create_active_session() -> dict[str, Any]:
 
     result = create_attendance_session(DEFAULT_SUBJECT_NAME, _today(), activate=True)
     if not result.get("success") or result.get("session") is None:
-        raise RuntimeError(result.get("message", "활성 출석 세션을 생성하지 못했습니다."))
+        raise RuntimeError(result.get("message", "?쒖꽦 異쒖꽍 ?몄뀡???앹꽦?섏? 紐삵뻽?듬땲??"))
 
     return result["session"]
 
@@ -303,7 +312,7 @@ def activate_session(session_id: int) -> dict[str, Any]:
         with get_connection() as connection:
             row = _fetch_session(connection, session_id)
             if row is None:
-                return {"success": False, "message": "출석 세션을 찾을 수 없습니다.", "session": None}
+                return {"success": False, "message": "異쒖꽍 ?몄뀡??李얠쓣 ???놁뒿?덈떎.", "session": None}
 
             connection.execute(
                 """
@@ -325,14 +334,14 @@ def activate_session(session_id: int) -> dict[str, Any]:
 
         return {
             "success": True,
-            "message": "출석 세션이 활성화되었습니다.",
+            "message": "異쒖꽍 ?몄뀡???쒖꽦?붾릺?덉뒿?덈떎.",
             "session": _session_payload(active_row),
         }
 
     except sqlite3.Error as error:
         return {
             "success": False,
-            "message": f"데이터베이스 오류가 발생했습니다: {error}",
+            "message": f"?곗씠?곕쿋?댁뒪 ?ㅻ쪟媛 諛쒖깮?덉뒿?덈떎: {error}",
             "session": None,
         }
 
@@ -344,7 +353,7 @@ def close_session(session_id: int) -> dict[str, Any]:
         with get_connection() as connection:
             row = _fetch_session(connection, session_id)
             if row is None:
-                return {"success": False, "message": "출석 세션을 찾을 수 없습니다.", "session": None}
+                return {"success": False, "message": "異쒖꽍 ?몄뀡??李얠쓣 ???놁뒿?덈떎.", "session": None}
 
             connection.execute(
                 """
@@ -359,14 +368,14 @@ def close_session(session_id: int) -> dict[str, Any]:
 
         return {
             "success": True,
-            "message": "출석 세션이 종료되었습니다.",
+            "message": "異쒖꽍 ?몄뀡??醫낅즺?섏뿀?듬땲??",
             "session": _session_payload(closed_row),
         }
 
     except sqlite3.Error as error:
         return {
             "success": False,
-            "message": f"데이터베이스 오류가 발생했습니다: {error}",
+            "message": f"?곗씠?곕쿋?댁뒪 ?ㅻ쪟媛 諛쒖깮?덉뒿?덈떎: {error}",
             "session": None,
         }
 
@@ -381,8 +390,8 @@ def list_sessions() -> list[dict[str, Any]]:
                 SELECT
                     attendance_sessions.id,
                     attendance_sessions.subject_id,
-                    attendance_sessions.classroom_id,
-                    subjects.classroom AS classroom_name,
+                    COALESCE(attendance_sessions.classroom_id, subjects.classroom_id) AS classroom_id,
+                    COALESCE(classrooms.classroom_name, subjects.classroom) AS classroom_name,
                     attendance_sessions.day_of_week,
                     attendance_sessions.subject_name,
                     attendance_sessions.class_date,
@@ -392,6 +401,7 @@ def list_sessions() -> list[dict[str, Any]]:
                     attendance_sessions.created_at
                 FROM attendance_sessions
                 LEFT JOIN subjects ON subjects.id = attendance_sessions.subject_id
+                LEFT JOIN classrooms ON classrooms.id = COALESCE(attendance_sessions.classroom_id, subjects.classroom_id)
                 ORDER BY attendance_sessions.class_date DESC, attendance_sessions.id DESC
                 """
             ).fetchall()
@@ -399,7 +409,7 @@ def list_sessions() -> list[dict[str, Any]]:
         return [_session_payload(row) for row in rows if row is not None]
 
     except sqlite3.Error as error:
-        print(f"데이터베이스 오류가 발생했습니다: {error}")
+        print(f"?곗씠?곕쿋?댁뒪 ?ㅻ쪟媛 諛쒖깮?덉뒿?덈떎: {error}")
         return []
 
 
@@ -421,7 +431,7 @@ def has_attended(student_id: int, session_id: int) -> bool:
         return row is not None
 
     except sqlite3.Error as error:
-        print(f"데이터베이스 오류가 발생했습니다: {error}")
+        print(f"?곗씠?곕쿋?댁뒪 ?ㅻ쪟媛 諛쒖깮?덉뒿?덈떎: {error}")
         return False
 
 
@@ -443,7 +453,7 @@ def is_student_enrolled_in_subject(student_id: int, subject_id: int) -> bool:
         return row is not None
 
     except sqlite3.Error as error:
-        print(f"데이터베이스 오류가 발생했습니다: {error}")
+        print(f"?곗씠?곕쿋?댁뒪 ?ㅻ쪟媛 諛쒖깮?덉뒿?덈떎: {error}")
         return False
 
 
@@ -466,7 +476,7 @@ def mark_attendance(
             if session_row is None:
                 return {
                     "success": False,
-                    "message": "출석 세션을 찾을 수 없습니다.",
+                    "message": "異쒖꽍 ?몄뀡??李얠쓣 ???놁뒿?덈떎.",
                     "attendance_id": None,
                     "session_id": resolved_session_id,
                 }
@@ -484,7 +494,7 @@ def mark_attendance(
             if existing is not None:
                 return {
                     "success": True,
-                    "message": "이미 출석함",
+                    "message": "이미 출석했습니다.",
                     "attendance_id": existing["id"],
                     "session": _session_payload(session_row),
                 }
@@ -516,7 +526,7 @@ def mark_attendance(
 
         return {
             "success": True,
-            "message": "출석 완료",
+            "message": "異쒖꽍 ?꾨즺",
             "attendance_id": cursor.lastrowid,
             "session": _session_payload(session_row),
         }
@@ -525,28 +535,28 @@ def mark_attendance(
         if "UNIQUE" in str(error).upper():
             return {
                 "success": True,
-                "message": "이미 출석함",
+                "message": "이미 출석했습니다.",
                 "attendance_id": None,
                 "session_id": session_id,
             }
 
         return {
             "success": False,
-            "message": f"데이터베이스 오류가 발생했습니다: {error}",
+            "message": f"?곗씠?곕쿋?댁뒪 ?ㅻ쪟媛 諛쒖깮?덉뒿?덈떎: {error}",
             "attendance_id": None,
             "session_id": session_id,
         }
     except sqlite3.Error as error:
         return {
             "success": False,
-            "message": f"데이터베이스 오류가 발생했습니다: {error}",
+            "message": f"?곗씠?곕쿋?댁뒪 ?ㅻ쪟媛 諛쒖깮?덉뒿?덈떎: {error}",
             "attendance_id": None,
             "session_id": session_id,
         }
     except Exception as error:
         return {
             "success": False,
-            "message": f"출석 처리 중 오류가 발생했습니다: {error}",
+            "message": f"異쒖꽍 泥섎━ 以??ㅻ쪟媛 諛쒖깮?덉뒿?덈떎: {error}",
             "attendance_id": None,
             "session_id": session_id,
         }
@@ -593,7 +603,7 @@ def get_attendance_by_session(session_id: int) -> list[dict[str, Any]]:
         return _attendance_rows_to_dicts(rows)
 
     except sqlite3.Error as error:
-        print(f"데이터베이스 오류가 발생했습니다: {error}")
+        print(f"?곗씠?곕쿋?댁뒪 ?ㅻ쪟媛 諛쒖깮?덉뒿?덈떎: {error}")
         return []
 
 
@@ -638,7 +648,7 @@ def get_attendance_by_date(date: str) -> list[dict[str, Any]]:
         return _attendance_rows_to_dicts(rows)
 
     except sqlite3.Error as error:
-        print(f"데이터베이스 오류가 발생했습니다: {error}")
+        print(f"?곗씠?곕쿋?댁뒪 ?ㅻ쪟媛 諛쒖깮?덉뒿?덈떎: {error}")
         return []
 
 
@@ -651,14 +661,14 @@ def get_attendance_records(
         if session is None:
             return {
                 "success": False,
-                "message": "출석 세션을 찾을 수 없습니다.",
+                "message": "異쒖꽍 ?몄뀡??李얠쓣 ???놁뒿?덈떎.",
                 "session": None,
                 "items": [],
             }
 
         return {
             "success": True,
-            "message": "세션 출석 목록 조회 성공",
+            "message": "?몄뀡 異쒖꽍 紐⑸줉 議고쉶 ?깃났",
             "session": session,
             "items": get_attendance_by_session(session_id),
         }
@@ -666,7 +676,7 @@ def get_attendance_records(
     if date is not None and date.strip():
         return {
             "success": True,
-            "message": "날짜별 출석 목록 조회 성공",
+            "message": "?좎쭨蹂?異쒖꽍 紐⑸줉 議고쉶 ?깃났",
             "session": None,
             "date": date.strip(),
             "items": get_attendance_by_date(date.strip()),
@@ -676,20 +686,20 @@ def get_attendance_records(
     if active_session is None:
         return {
             "success": False,
-            "message": "활성 출석 세션이 없습니다.",
+            "message": "?쒖꽦 異쒖꽍 ?몄뀡???놁뒿?덈떎.",
             "session": None,
             "items": [],
         }
 
     return {
         "success": True,
-        "message": "활성 세션 출석 목록 조회 성공",
+        "message": "?쒖꽦 ?몄뀡 異쒖꽍 紐⑸줉 議고쉶 ?깃났",
         "session": active_session,
         "items": get_attendance_by_session(int(active_session["session_id"])),
     }
 
 
-# 기존 코드 호환용 별칭
+# 湲곗〈 肄붾뱶 ?명솚??蹂꾩묶
 activate_attendance_session = activate_session
 close_attendance_session = close_session
 list_attendance_sessions = list_sessions
@@ -760,7 +770,7 @@ if __name__ == "__main__":
             print(record)
 
 def get_student_attendance_stats(student_id: int) -> dict[str, Any]:
-    """학생 상세 화면에서 사용할 출석/지각/결석 통계를 조회한다."""
+    """?숈깮 ?곸꽭 ?붾㈃?먯꽌 ?ъ슜??異쒖꽍/吏媛?寃곗꽍 ?듦퀎瑜?議고쉶?쒕떎."""
     try:
         init_db(verbose=False)
 
@@ -772,7 +782,7 @@ def get_student_attendance_stats(student_id: int) -> dict[str, Any]:
             if student is None:
                 return {
                     "success": False,
-                    "message": "학생을 찾을 수 없습니다.",
+                    "message": "?숈깮??李얠쓣 ???놁뒿?덈떎.",
                     "attendance_count": 0,
                     "late_count": 0,
                     "absence_count": 0,
@@ -781,9 +791,9 @@ def get_student_attendance_stats(student_id: int) -> dict[str, Any]:
             row = connection.execute(
                 """
                 SELECT
-                    SUM(CASE WHEN status IN ('present', 'attended', '출석') THEN 1 ELSE 0 END) AS attendance_count,
-                    SUM(CASE WHEN status IN ('late', '지각') THEN 1 ELSE 0 END) AS late_count,
-                    SUM(CASE WHEN status IN ('absent', '결석') THEN 1 ELSE 0 END) AS absence_count
+                    SUM(CASE WHEN status IN ('present', 'attended', '異쒖꽍') THEN 1 ELSE 0 END) AS attendance_count,
+                    SUM(CASE WHEN status IN ('late', '吏媛?) THEN 1 ELSE 0 END) AS late_count,
+                    SUM(CASE WHEN status IN ('absent', '寃곗꽍') THEN 1 ELSE 0 END) AS absence_count
                 FROM attendance
                 WHERE student_id = ?
                 """,
@@ -792,7 +802,7 @@ def get_student_attendance_stats(student_id: int) -> dict[str, Any]:
 
         return {
             "success": True,
-            "message": "학생 통계 조회 성공",
+            "message": "?숈깮 ?듦퀎 議고쉶 ?깃났",
             "attendance_count": int(row["attendance_count"] or 0),
             "late_count": int(row["late_count"] or 0),
             "absence_count": int(row["absence_count"] or 0),
@@ -801,8 +811,9 @@ def get_student_attendance_stats(student_id: int) -> dict[str, Any]:
     except sqlite3.Error as error:
         return {
             "success": False,
-            "message": f"학생 통계 조회 중 데이터베이스 오류가 발생했습니다: {error}",
+            "message": f"?숈깮 ?듦퀎 議고쉶 以??곗씠?곕쿋?댁뒪 ?ㅻ쪟媛 諛쒖깮?덉뒿?덈떎: {error}",
             "attendance_count": 0,
             "late_count": 0,
             "absence_count": 0,
         }
+
