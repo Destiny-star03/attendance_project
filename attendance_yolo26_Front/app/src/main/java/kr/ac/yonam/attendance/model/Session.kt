@@ -9,6 +9,11 @@ data class Session(
     val subjectId: Int? = null,
     @SerializedName("subject_name")
     val subjectName: String? = null,
+    @SerializedName("classroom_id")
+    val classroomId: Int? = null,
+    @SerializedName("classroom_name")
+    val classroomName: String? = null,
+    val classroom: String? = null,
     @SerializedName("class_date")
     val classDate: String? = null,
     @SerializedName("start_time")

@@ -1,5 +1,6 @@
 package kr.ac.yonam.attendance.ui
 
+import android.content.Intent
 import android.os.Bundle
 import android.view.View
 import androidx.appcompat.app.AppCompatActivity
@@ -11,6 +12,7 @@ import kr.ac.yonam.attendance.databinding.ActivityAttendanceListBinding
 import kr.ac.yonam.attendance.model.AttendanceItem
 import kr.ac.yonam.attendance.model.Session
 import kr.ac.yonam.attendance.repository.AttendanceRepository
+import kr.ac.yonam.attendance.util.ClassroomConfig
 import kr.ac.yonam.attendance.util.ServerConfig
 
 class AttendanceListActivity : AppCompatActivity() {
@@ -48,8 +50,31 @@ class AttendanceListActivity : AppCompatActivity() {
         lifecycleScope.launch {
             try {
                 // session_id와 date를 보내지 않으면 서버가 현재 활성 세션 기준으로 조회한다.
-                val response = AttendanceRepository(serverUrl).getAttendance()
-                showSession(response.session)
+                val classroomId = ClassroomConfig.getSelectedClassroomId(this@AttendanceListActivity)
+                if (classroomId == null) {
+                    showSession(null)
+                    showError(getString(R.string.classroom_select_required))
+                    showAttendanceItems(emptyList())
+                    startActivity(Intent(this@AttendanceListActivity, ClassroomSelectActivity::class.java))
+                    return@launch
+                }
+
+                val repository = AttendanceRepository(serverUrl)
+                val sessionResponse = repository.getCurrentSession(classroomId)
+                val session = if (sessionResponse.success == true) {
+                    sessionResponse.session
+                } else {
+                    repository.getActiveSession().session
+                }
+
+                showSession(session)
+                if (session?.sessionId == null) {
+                    showError(getString(R.string.current_classroom_session_empty))
+                    showAttendanceItems(emptyList())
+                    return@launch
+                }
+
+                val response = repository.getAttendance(sessionId = session.sessionId)
 
                 if (response.success == true) {
                     showAttendanceItems(response.items.orEmpty())
@@ -72,9 +97,18 @@ class AttendanceListActivity : AppCompatActivity() {
 
     private fun showSession(session: Session?) {
         binding.textSubjectName.text = session?.subjectName ?: "-"
+        binding.textClassroom.text = session?.classroomDisplayName()
+            ?: (ClassroomConfig.getSelectedClassroomName(this) ?: "-")
         binding.textClassDate.text = session?.classDate ?: "-"
         binding.textStartTime.text = session?.startTime ?: "-"
         binding.textEndTime.text = session?.endTime ?: "-"
+    }
+
+    private fun Session.classroomDisplayName(): String {
+        return classroomName
+            ?: classroom
+            ?: ClassroomConfig.getSelectedClassroomName(this@AttendanceListActivity)
+            ?: "-"
     }
 
     private fun showAttendanceItems(items: List<AttendanceItem>) {

@@ -1,4 +1,4 @@
-package kr.ac.yonam.attendance.repository
+﻿package kr.ac.yonam.attendance.repository
 
 import android.content.Context
 import android.net.Uri
@@ -6,7 +6,10 @@ import kr.ac.yonam.attendance.model.ActiveSessionResponse
 import kr.ac.yonam.attendance.model.AttendanceListResponse
 import kr.ac.yonam.attendance.model.AttendanceResponse
 import kr.ac.yonam.attendance.model.ClassroomListResponse
+import kr.ac.yonam.attendance.model.ClassroomRequest
+import kr.ac.yonam.attendance.model.ClassroomResponse
 import kr.ac.yonam.attendance.model.CommonResponse
+import kr.ac.yonam.attendance.model.CreateClassroomRequest
 import kr.ac.yonam.attendance.model.CreateSessionRequest
 import kr.ac.yonam.attendance.model.CreateSubjectRequest
 import kr.ac.yonam.attendance.model.CurrentSessionResponse
@@ -28,6 +31,7 @@ import kr.ac.yonam.attendance.util.ImageUtil
 import okhttp3.MediaType.Companion.toMediaType
 import okhttp3.RequestBody
 import okhttp3.RequestBody.Companion.toRequestBody
+import retrofit2.Response
 
 class AttendanceRepository private constructor(
     private val api: AttendanceApi
@@ -67,7 +71,7 @@ class AttendanceRepository private constructor(
         sessionId: Int? = null,
         date: String? = null
     ): AttendanceListResponse {
-        // 학생 목록 API가 없을 때도 출석 화면은 이 응답의 items로 상태를 동기화한다.
+        // ?숈깮 紐⑸줉 API媛 ?놁쓣 ?뚮룄 異쒖꽍 ?붾㈃? ???묐떟??items濡??곹깭瑜??숆린?뷀븳??
         return safeCall(
             call = { api.getAttendance(sessionId = sessionId, date = date) },
             fallback = { AttendanceListResponse(success = false, message = it) }
@@ -80,18 +84,18 @@ class AttendanceRepository private constructor(
             if (response.isSuccessful) {
                 response.body() ?: StudentsResponse(
                     success = false,
-                    message = "학생 목록 응답이 비어 있습니다."
+                    message = "?숈깮 紐⑸줉 ?묐떟??鍮꾩뼱 ?덉뒿?덈떎."
                 )
             } else {
                 StudentsResponse(
                     success = false,
-                    message = "학생 목록을 불러오지 못했습니다. (HTTP ${response.code()})"
+                    message = "?숈깮 紐⑸줉??遺덈윭?ㅼ? 紐삵뻽?듬땲?? (HTTP ${response.code()})"
                 )
             }
         } catch (error: Exception) {
             StudentsResponse(
                 success = false,
-                message = "학생 목록 조회 중 네트워크 오류가 발생했습니다: ${error.message ?: "알 수 없는 오류"}"
+                message = "?숈깮 紐⑸줉 議고쉶 以??ㅽ듃?뚰겕 ?ㅻ쪟媛 諛쒖깮?덉뒿?덈떎: ${error.message ?: "?????녿뒗 ?ㅻ쪟"}"
             )
         }
     }
@@ -102,18 +106,18 @@ class AttendanceRepository private constructor(
             if (response.isSuccessful) {
                 response.body() ?: StudentStatsResponse(
                     success = false,
-                    message = "학생 통계 응답이 비어 있습니다."
+                    message = "?숈깮 ?듦퀎 ?묐떟??鍮꾩뼱 ?덉뒿?덈떎."
                 )
             } else {
                 StudentStatsResponse(
                     success = false,
-                    message = "학생 통계를 불러오지 못했습니다. (HTTP ${response.code()})"
+                    message = "?숈깮 ?듦퀎瑜?遺덈윭?ㅼ? 紐삵뻽?듬땲?? (HTTP ${response.code()})"
                 )
             }
         } catch (error: Exception) {
             StudentStatsResponse(
                 success = false,
-                message = "학생 통계 조회 중 네트워크 오류가 발생했습니다: ${error.message ?: "알 수 없는 오류"}"
+                message = "?숈깮 ?듦퀎 議고쉶 以??ㅽ듃?뚰겕 ?ㅻ쪟媛 諛쒖깮?덉뒿?덈떎: ${error.message ?: "?????녿뒗 ?ㅻ쪟"}"
             )
         }
     }
@@ -125,10 +129,135 @@ class AttendanceRepository private constructor(
         )
     }
 
-    suspend fun getClassrooms(): ClassroomListResponse {
+    suspend fun getClassrooms(activeOnly: Boolean? = null): ClassroomListResponse {
         return safeCall(
-            call = { api.getClassrooms() },
+            call = {
+                classroomListResponse(
+                    response = api.getClassrooms(activeOnly = activeOnly),
+                    emptyMessage = "강의실 목록 응답이 비어 있습니다.",
+                    httpMessage = { "강의실 목록을 불러오지 못했습니다. (HTTP $it)" }
+                )
+            },
             fallback = { ClassroomListResponse(success = false, message = it, items = emptyList()) }
+        )
+    }
+
+    suspend fun createClassroom(request: CreateClassroomRequest): ClassroomResponse {
+        return safeCall(
+            call = {
+                classroomResponse(
+                    response = api.createClassroom(request),
+                    emptyMessage = "강의실 저장 응답이 비어 있습니다.",
+                    httpMessage = { "강의실을 저장하지 못했습니다. (HTTP $it)" }
+                )
+            },
+            fallback = { ClassroomResponse(success = false, message = it) }
+        )
+    }
+
+    suspend fun createClassroom(request: ClassroomRequest): ClassroomResponse {
+        return createClassroom(request.toCreateClassroomRequest())
+    }
+
+    suspend fun createClassroom(
+        classroomName: String,
+        buildingName: String? = null,
+        floor: String? = null,
+        description: String? = null
+    ): ClassroomResponse {
+        return createClassroom(
+            CreateClassroomRequest(
+                classroomName = classroomName,
+                buildingName = buildingName,
+                floor = floor,
+                description = description
+            )
+        )
+    }
+
+    suspend fun getClassroom(classroomId: Int): ClassroomResponse {
+        return safeCall(
+            call = {
+                classroomResponse(
+                    response = api.getClassroom(classroomId),
+                    emptyMessage = "강의실 상세 응답이 비어 있습니다.",
+                    httpMessage = { "강의실 정보를 불러오지 못했습니다. (HTTP $it)" }
+                )
+            },
+            fallback = { ClassroomResponse(success = false, message = it) }
+        )
+    }
+
+    suspend fun updateClassroom(
+        classroomId: Int,
+        request: CreateClassroomRequest
+    ): ClassroomResponse {
+        return safeCall(
+            call = {
+                classroomResponse(
+                    response = api.updateClassroom(classroomId, request),
+                    emptyMessage = "강의실 수정 응답이 비어 있습니다.",
+                    httpMessage = { "강의실을 수정하지 못했습니다. (HTTP $it)" }
+                )
+            },
+            fallback = { ClassroomResponse(success = false, message = it) }
+        )
+    }
+
+    suspend fun updateClassroom(
+        classroomId: Int,
+        request: ClassroomRequest
+    ): ClassroomResponse {
+        return updateClassroom(classroomId, request.toCreateClassroomRequest())
+    }
+
+    suspend fun updateClassroom(
+        classroomId: Int,
+        classroomName: String,
+        buildingName: String? = null,
+        floor: String? = null,
+        description: String? = null
+    ): ClassroomResponse {
+        return updateClassroom(
+            classroomId = classroomId,
+            request = CreateClassroomRequest(
+                classroomName = classroomName,
+                buildingName = buildingName,
+                floor = floor,
+                description = description
+            )
+        )
+    }
+
+    suspend fun deleteClassroom(classroomId: Int): CommonResponse {
+        return safeCall(
+            call = {
+                val response = api.deleteClassroom(classroomId)
+                if (response.isSuccessful) {
+                    val body = response.body()
+                    CommonResponse(
+                        success = body?.success ?: false,
+                        status = body?.status,
+                        message = body?.message ?: "강의실 비활성화 응답이 비어 있습니다.",
+                        deleted = body?.success == true
+                    )
+                } else {
+                    CommonResponse(
+                        success = false,
+                        status = "http_error",
+                        message = "강의실을 비활성화하지 못했습니다. (HTTP ${response.code()})",
+                        deleted = false
+                    )
+                }
+            },
+            fallback = {
+                CommonResponse(
+                    success = false,
+                    status = "server_error",
+                    message = it,
+                    deleted = false
+                )
+            }
         )
     }
 
@@ -142,13 +271,21 @@ class AttendanceRepository private constructor(
     suspend fun createSubject(
         subjectName: String,
         professorName: String? = null,
-        classroom: String? = null
+        classroom: String? = null,
+        classroomId: Int? = null,
+        dayOfWeek: String? = null,
+        startTime: String? = null,
+        endTime: String? = null
     ): SubjectResponse {
         return createSubject(
             CreateSubjectRequest(
                 subjectName = subjectName,
                 professorName = professorName,
-                classroom = classroom
+                classroom = classroom,
+                classroomId = classroomId,
+                dayOfWeek = dayOfWeek,
+                startTime = startTime,
+                endTime = endTime
             )
         )
     }
@@ -174,14 +311,22 @@ class AttendanceRepository private constructor(
         subjectId: Int,
         subjectName: String? = null,
         professorName: String? = null,
-        classroom: String? = null
+        classroom: String? = null,
+        classroomId: Int? = null,
+        dayOfWeek: String? = null,
+        startTime: String? = null,
+        endTime: String? = null
     ): SubjectResponse {
         return updateSubject(
             subjectId = subjectId,
             request = CreateSubjectRequest(
                 subjectName = subjectName,
                 professorName = professorName,
-                classroom = classroom
+                classroom = classroom,
+                classroomId = classroomId,
+                dayOfWeek = dayOfWeek,
+                startTime = startTime,
+                endTime = endTime
             )
         )
     }
@@ -248,14 +393,20 @@ class AttendanceRepository private constructor(
         subjectId: Int,
         classDate: String,
         startTime: String? = null,
-        endTime: String? = null
+        endTime: String? = null,
+        classroomId: Int? = null,
+        dayOfWeek: String? = null,
+        activate: Boolean? = null
     ): ActiveSessionResponse {
         return createSubjectSession(
             subjectId = subjectId,
             request = CreateSessionRequest(
                 classDate = classDate,
                 startTime = startTime,
-                endTime = endTime
+                endTime = endTime,
+                classroomId = classroomId,
+                dayOfWeek = dayOfWeek,
+                activate = activate
             )
         )
     }
@@ -392,11 +543,62 @@ class AttendanceRepository private constructor(
         return try {
             call()
         } catch (error: Exception) {
-            fallback(error.message ?: "네트워크 오류가 발생했습니다.")
+            fallback(error.message ?: "?ㅽ듃?뚰겕 ?ㅻ쪟媛 諛쒖깮?덉뒿?덈떎.")
         }
     }
 
     private fun textPart(value: String): RequestBody {
         return value.toRequestBody("text/plain".toMediaType())
+    }
+
+    private fun classroomListResponse(
+        response: Response<ClassroomListResponse>,
+        emptyMessage: String,
+        httpMessage: (Int) -> String
+    ): ClassroomListResponse {
+        return if (response.isSuccessful) {
+            response.body() ?: ClassroomListResponse(
+                success = false,
+                status = "empty_body",
+                message = emptyMessage,
+                items = emptyList()
+            )
+        } else {
+            ClassroomListResponse(
+                success = false,
+                status = "http_error",
+                message = httpMessage(response.code()),
+                items = emptyList()
+            )
+        }
+    }
+
+    private fun classroomResponse(
+        response: Response<ClassroomResponse>,
+        emptyMessage: String,
+        httpMessage: (Int) -> String
+    ): ClassroomResponse {
+        return if (response.isSuccessful) {
+            response.body() ?: ClassroomResponse(
+                success = false,
+                status = "empty_body",
+                message = emptyMessage
+            )
+        } else {
+            ClassroomResponse(
+                success = false,
+                status = "http_error",
+                message = httpMessage(response.code())
+            )
+        }
+    }
+
+    private fun ClassroomRequest.toCreateClassroomRequest(): CreateClassroomRequest {
+        return CreateClassroomRequest(
+            classroomName = classroomName.orEmpty(),
+            buildingName = buildingName,
+            floor = floor?.toString(),
+            description = description
+        )
     }
 }

@@ -12,6 +12,7 @@ import kr.ac.yonam.attendance.R
 import kr.ac.yonam.attendance.databinding.ActivityAdminMainBinding
 import kr.ac.yonam.attendance.model.Session
 import kr.ac.yonam.attendance.repository.AttendanceRepository
+import kr.ac.yonam.attendance.util.ClassroomConfig
 import kr.ac.yonam.attendance.util.ServerConfig
 
 class AdminMainActivity : AppCompatActivity() {
@@ -29,10 +30,17 @@ class AdminMainActivity : AppCompatActivity() {
         setContentView(binding.root)
 
         bindActions()
-        loadActiveSession()
+        loadCurrentSession()
     }
 
     private fun bindActions() {
+        binding.buttonManageClassrooms.setOnClickListener {
+            startActivity(
+                Intent(this, ClassroomManageActivity::class.java)
+                    .putExtra(ClassroomManageActivity.EXTRA_SERVER_URL, serverUrl)
+            )
+        }
+
         binding.buttonManageSubjects.setOnClickListener {
             openSubjectManagement()
         }
@@ -80,16 +88,23 @@ class AdminMainActivity : AppCompatActivity() {
         )
     }
 
-    private fun loadActiveSession() {
+    private fun loadCurrentSession() {
+        val classroomId = ClassroomConfig.getSelectedClassroomId(this)
+        if (classroomId == null) {
+            showClassroomRequired()
+            return
+        }
+
         setLoading(true)
         showSessionLoading()
 
         lifecycleScope.launch {
             try {
-                val response = AttendanceRepository(serverUrl).getActiveSession()
+                val repository = AttendanceRepository(serverUrl)
+                val response = repository.getCurrentSession(classroomId)
                 if (response.success == true && response.session != null) {
                     showSession(response.session)
-                } else if (response.success == true) {
+                } else if (response.status == "no_current_session" || response.success == true) {
                     showEmptySession()
                 } else {
                     showLoadFailed()
@@ -104,6 +119,7 @@ class AdminMainActivity : AppCompatActivity() {
 
     private fun showSessionLoading() {
         binding.textSubjectName.text = getString(R.string.loading)
+        binding.textClassroom.text = ClassroomConfig.getSelectedClassroomName(this) ?: "-"
         binding.textClassDate.text = "-"
         binding.textStartTime.text = "-"
         binding.textEndTime.text = "-"
@@ -112,6 +128,7 @@ class AdminMainActivity : AppCompatActivity() {
 
     private fun showSession(session: Session) {
         binding.textSubjectName.text = session.subjectName ?: "-"
+        binding.textClassroom.text = session.classroomDisplayName()
         binding.textClassDate.text = session.classDate ?: "-"
         binding.textStartTime.text = session.startTime ?: "-"
         binding.textEndTime.text = session.endTime ?: "-"
@@ -120,16 +137,18 @@ class AdminMainActivity : AppCompatActivity() {
 
     private fun showEmptySession() {
         binding.textSubjectName.text = "-"
+        binding.textClassroom.text = ClassroomConfig.getSelectedClassroomName(this) ?: "-"
         binding.textClassDate.text = "-"
         binding.textStartTime.text = "-"
         binding.textEndTime.text = "-"
-        binding.textSessionMessage.text = getString(R.string.session_empty)
+        binding.textSessionMessage.text = getString(R.string.current_classroom_session_empty)
         binding.textSessionMessage.setTextColor(color(R.color.text_secondary))
         binding.textSessionMessage.visibility = View.VISIBLE
     }
 
     private fun showLoadFailed() {
         binding.textSubjectName.text = "-"
+        binding.textClassroom.text = ClassroomConfig.getSelectedClassroomName(this) ?: "-"
         binding.textClassDate.text = "-"
         binding.textStartTime.text = "-"
         binding.textEndTime.text = "-"
@@ -138,8 +157,27 @@ class AdminMainActivity : AppCompatActivity() {
         binding.textSessionMessage.visibility = View.VISIBLE
     }
 
+    private fun showClassroomRequired() {
+        binding.textSubjectName.text = "-"
+        binding.textClassroom.text = "-"
+        binding.textClassDate.text = "-"
+        binding.textStartTime.text = "-"
+        binding.textEndTime.text = "-"
+        binding.textSessionMessage.text = getString(R.string.admin_classroom_not_selected)
+        binding.textSessionMessage.setTextColor(color(R.color.yonam_red))
+        binding.textSessionMessage.visibility = View.VISIBLE
+    }
+
+    private fun Session.classroomDisplayName(): String {
+        return classroomName
+            ?: classroom
+            ?: ClassroomConfig.getSelectedClassroomName(this@AdminMainActivity)
+            ?: "-"
+    }
+
     private fun setLoading(isLoading: Boolean) {
         binding.progressLoading.visibility = if (isLoading) View.VISIBLE else View.GONE
+        binding.buttonManageClassrooms.isEnabled = !isLoading
         binding.buttonManageSubjects.isEnabled = !isLoading
         binding.buttonRegisterStudent.isEnabled = !isLoading
         binding.buttonAttendanceList.isEnabled = !isLoading

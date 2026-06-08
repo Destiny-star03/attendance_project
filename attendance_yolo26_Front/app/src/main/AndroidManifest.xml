@@ -17,6 +17,9 @@
         android:theme="@style/Theme.YonamAttendance"
         android:usesCleartextTraffic="true">
         <activity
+            android:name=".ui.ClassroomManageActivity"
+            android:exported="false" />
+        <activity
             android:name=".ui.SubjectDetailActivity"
             android:exported="false" />
         <activity
@@ -45,6 +48,9 @@
             android:exported="false" />
         <activity
             android:name=".ui.RoleSelectActivity"
+            android:exported="false" />
+        <activity
+            android:name=".ui.ClassroomSelectActivity"
             android:exported="true">
             <intent-filter>
                 <action android:name="android.intent.action.MAIN" />

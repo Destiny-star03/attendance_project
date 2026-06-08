@@ -121,6 +121,23 @@
                         android:textSize="23sp"
                         android:textStyle="bold" />
 
+                    <TextView
+                        android:layout_width="match_parent"
+                        android:layout_height="wrap_content"
+                        android:layout_marginTop="14dp"
+                        android:text="@string/main_classroom"
+                        android:textColor="@color/text_secondary"
+                        android:textSize="13sp" />
+
+                    <TextView
+                        android:id="@+id/textClassroom"
+                        android:layout_width="match_parent"
+                        android:layout_height="wrap_content"
+                        android:layout_marginTop="4dp"
+                        android:text="-"
+                        android:textColor="@color/text_primary"
+                        android:textSize="17sp" />
+
                     <LinearLayout
                         android:layout_width="match_parent"
                         android:layout_height="wrap_content"
@@ -237,10 +254,29 @@
                         android:textStyle="bold" />
 
                     <com.google.android.material.button.MaterialButton
-                        android:id="@+id/buttonManageSubjects"
+                        android:id="@+id/buttonManageClassrooms"
                         android:layout_width="match_parent"
                         android:layout_height="54dp"
                         android:layout_marginTop="16dp"
+                        android:text="@string/admin_manage_classrooms"
+                        android:textAllCaps="false"
+                        android:textColor="@android:color/white"
+                        app:backgroundTint="@color/yonam_deep_red"
+                        app:cornerRadius="8dp" />
+
+                    <TextView
+                        android:layout_width="match_parent"
+                        android:layout_height="wrap_content"
+                        android:layout_marginTop="6dp"
+                        android:text="강의실을 추가하고 수정합니다."
+                        android:textColor="@color/text_secondary"
+                        android:textSize="13sp" />
+
+                    <com.google.android.material.button.MaterialButton
+                        android:id="@+id/buttonManageSubjects"
+                        android:layout_width="match_parent"
+                        android:layout_height="54dp"
+                        android:layout_marginTop="10dp"
                         android:text="@string/admin_manage_subjects"
                         android:textAllCaps="false"
                         android:textColor="@android:color/white"

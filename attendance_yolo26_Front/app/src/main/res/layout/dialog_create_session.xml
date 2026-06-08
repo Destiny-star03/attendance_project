@@ -15,46 +15,73 @@
         android:textStyle="bold" />
 
     <com.google.android.material.textfield.TextInputLayout
+        android:id="@+id/layoutClassDate"
         android:layout_width="match_parent"
         android:layout_height="wrap_content"
         android:layout_marginTop="18dp"
-        android:hint="@string/class_date_hint">
+        android:hint="@string/class_date_hint"
+        app:endIconMode="custom"
+        app:endIconDrawable="@android:drawable/ic_menu_month">
 
         <com.google.android.material.textfield.TextInputEditText
             android:id="@+id/editClassDate"
             android:layout_width="match_parent"
             android:layout_height="wrap_content"
-            android:inputType="date"
+            android:clickable="true"
+            android:cursorVisible="false"
+            android:focusable="false"
+            android:inputType="none"
             android:singleLine="true" />
     </com.google.android.material.textfield.TextInputLayout>
 
     <com.google.android.material.textfield.TextInputLayout
+        android:id="@+id/layoutStartTime"
         android:layout_width="match_parent"
         android:layout_height="wrap_content"
         android:layout_marginTop="12dp"
-        android:hint="@string/start_time_hint">
+        android:hint="@string/start_time_hint"
+        app:endIconMode="custom"
+        app:endIconDrawable="@android:drawable/ic_menu_recent_history">
 
         <com.google.android.material.textfield.TextInputEditText
             android:id="@+id/editStartTime"
             android:layout_width="match_parent"
             android:layout_height="wrap_content"
-            android:inputType="time"
+            android:clickable="true"
+            android:cursorVisible="false"
+            android:focusable="false"
+            android:inputType="none"
             android:singleLine="true" />
     </com.google.android.material.textfield.TextInputLayout>
 
     <com.google.android.material.textfield.TextInputLayout
+        android:id="@+id/layoutEndTime"
         android:layout_width="match_parent"
         android:layout_height="wrap_content"
         android:layout_marginTop="12dp"
-        android:hint="@string/end_time_hint">
+        android:hint="@string/end_time_hint"
+        app:endIconMode="custom"
+        app:endIconDrawable="@android:drawable/ic_menu_recent_history">
 
         <com.google.android.material.textfield.TextInputEditText
             android:id="@+id/editEndTime"
             android:layout_width="match_parent"
             android:layout_height="wrap_content"
-            android:inputType="time"
+            android:clickable="true"
+            android:cursorVisible="false"
+            android:focusable="false"
+            android:inputType="none"
             android:singleLine="true" />
     </com.google.android.material.textfield.TextInputLayout>
+
+    <CheckBox
+        android:id="@+id/checkActivate"
+        android:layout_width="match_parent"
+        android:layout_height="wrap_content"
+        android:layout_marginTop="12dp"
+        android:checked="false"
+        android:text="@string/session_activate_now"
+        android:textColor="@color/text_primary" />
 
     <TextView
         android:id="@+id/textMessage"
@@ -92,7 +119,7 @@
             android:layout_width="128dp"
             android:layout_height="48dp"
             android:layout_marginStart="10dp"
-            android:text="@string/create_session"
+            android:text="@string/save_session"
             android:textColor="@android:color/white"
             app:backgroundTint="@color/yonam_deep_red"
             app:cornerRadius="8dp" />

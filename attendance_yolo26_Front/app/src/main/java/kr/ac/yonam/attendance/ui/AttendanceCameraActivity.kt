@@ -1,6 +1,7 @@
 package kr.ac.yonam.attendance.ui
 
 import android.Manifest
+import android.content.Intent
 import android.content.pm.PackageManager
 import android.os.Bundle
 import android.view.View
@@ -22,6 +23,7 @@ import kr.ac.yonam.attendance.model.AttendanceItem
 import kr.ac.yonam.attendance.model.AttendanceResponse
 import kr.ac.yonam.attendance.model.Session
 import kr.ac.yonam.attendance.repository.AttendanceRepository
+import kr.ac.yonam.attendance.util.ClassroomConfig
 import kr.ac.yonam.attendance.util.ImageUtil
 import kr.ac.yonam.attendance.util.ServerConfig
 import java.util.concurrent.ExecutorService
@@ -170,6 +172,12 @@ class AttendanceCameraActivity : AppCompatActivity() {
             now - lastRequestAtMillis < REQUEST_INTERVAL_MILLIS
         ) {
             imageProxy.close()
+            return
+        }
+
+        if (activeSessionId == null) {
+            imageProxy.close()
+            showNoCurrentSession()
             return
         }
 
@@ -385,7 +393,7 @@ class AttendanceCameraActivity : AppCompatActivity() {
 
             response.session?.let { session ->
                 activeSessionId = session.sessionId ?: activeSessionId
-                showSession(session)
+                showCurrentSessionInfo(session)
             }
 
             mergeAttendanceRecords(response.items.orEmpty())
@@ -491,10 +499,28 @@ class AttendanceCameraActivity : AppCompatActivity() {
 
     private fun loadActiveSession() {
         lifecycleScope.launch {
-            val response = repository.getActiveSession()
-            activeSessionId = response.session?.sessionId
-            showSession(response.session)
-            loadAttendanceAndSyncStatus()
+            val classroomId = ClassroomConfig.getSelectedClassroomId(this@AttendanceCameraActivity)
+            if (classroomId == null) {
+                activeSessionId = null
+                showClassroomRequired()
+                startActivity(Intent(this@AttendanceCameraActivity, ClassroomSelectActivity::class.java))
+                return@launch
+            }
+
+            val response = repository.getCurrentSession(classroomId)
+            val session = if (response.success == true) {
+                response.session
+            } else {
+                repository.getActiveSession().session
+            }
+
+            activeSessionId = session?.sessionId
+            showCurrentSessionInfo(session)
+            if (activeSessionId == null) {
+                showNoCurrentSession()
+            } else {
+                loadAttendanceAndSyncStatus()
+            }
         }
     }
 
@@ -523,6 +549,39 @@ class AttendanceCameraActivity : AppCompatActivity() {
             "현재 수업: ${session.subjectName ?: "-"} / ${session.classDate ?: "-"} / " +
                 "${session.startTime ?: "-"}~${session.endTime ?: "-"}"
         }
+    }
+
+    private fun showCurrentSessionInfo(session: Session?) {
+        binding.textSessionInfo.text = if (session == null) {
+            "현재 수업: -"
+        } else {
+            "현재 수업: ${session.subjectName ?: "-"} / ${session.classroomDisplayName()} / " +
+                "${session.classDate ?: "-"} / ${session.startTime ?: "-"}~${session.endTime ?: "-"}"
+        }
+    }
+
+    private fun showNoCurrentSession() {
+        binding.faceGuideOverlay.setGuideState(
+            "error",
+            getString(R.string.current_classroom_session_empty)
+        )
+        showRecognitionMessage(getString(R.string.current_classroom_session_empty), R.color.yonam_red)
+        binding.textRecognitionTimer.text = "0.0 / 3珥?"
+        binding.textRecognizedStudent.text = "-"
+        binding.progressRecognition.progress = 0
+    }
+
+    private fun showClassroomRequired() {
+        binding.textSessionInfo.text = getString(R.string.classroom_select_required)
+        binding.faceGuideOverlay.setGuideState("error", getString(R.string.classroom_select_required))
+        showRecognitionMessage(getString(R.string.classroom_select_required), R.color.yonam_red)
+    }
+
+    private fun Session.classroomDisplayName(): String {
+        return classroomName
+            ?: classroom
+            ?: ClassroomConfig.getSelectedClassroomName(this@AttendanceCameraActivity)
+            ?: "-"
     }
 
     private fun formatSeconds(value: Double): String {

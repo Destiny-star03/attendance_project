@@ -10,10 +10,12 @@ data class Classroom(
     val classroomName: String? = null,
     @SerializedName("building_name")
     val buildingName: String? = null,
-    val floor: Int? = null,
+    val floor: String? = null,
     val description: String? = null,
     @SerializedName("is_active")
-    val isActive: Boolean? = null
+    val isActive: Boolean? = null,
+    @SerializedName("created_at")
+    val createdAt: String? = null
 ) {
     val resolvedClassroomId: Int?
         get() = classroomId ?: id

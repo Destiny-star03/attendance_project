@@ -63,7 +63,17 @@ class SubjectDetailActivity : AppCompatActivity() {
             this
         ) { _, bundle ->
             if (bundle.getBoolean(CreateSessionDialog.KEY_CREATED, false)) {
-                showMessage(getString(R.string.session_created_active), isError = false)
+                showMessage(
+                    getString(
+                        if (bundle.getBoolean(CreateSessionDialog.KEY_ACTIVATED, false)) {
+                            R.string.session_created_active
+                        } else {
+                            R.string.session_created_inactive
+                        }
+                    ),
+                    isError = false
+                )
+                loadSubjectDetail()
             }
         }
 

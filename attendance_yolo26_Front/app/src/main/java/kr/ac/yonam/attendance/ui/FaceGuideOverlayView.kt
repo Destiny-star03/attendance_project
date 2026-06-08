@@ -5,7 +5,6 @@ import android.graphics.Canvas
 import android.graphics.Color
 import android.graphics.Paint
 import android.graphics.Path
-import android.graphics.RectF
 import android.util.AttributeSet
 import android.view.View
 import androidx.core.content.ContextCompat
@@ -48,9 +47,6 @@ class FaceGuideOverlayView @JvmOverloads constructor(
         style = Paint.Style.FILL
     }
 
-    private val guideRect = RectF()
-    private val messageBackgroundRect = RectF()
-
     private var status: String = STATUS_IDLE
     private var message: String = DEFAULT_MESSAGE
     private var progressText: String? = null
@@ -70,48 +66,47 @@ class FaceGuideOverlayView @JvmOverloads constructor(
         super.onDraw(canvas)
         if (width <= 0 || height <= 0) return
 
-        val guideWidth = min(width * 0.42f, height * 0.45f)
-        val guideHeight = min(guideWidth * 1.35f, height * 0.72f)
+        val radius = min(width, height) * 0.30f
         val centerX = width / 2f
-        val centerY = height * 0.43f
+        val centerY = height / 2f
 
-        guideRect.set(
-            centerX - guideWidth / 2f,
-            centerY - guideHeight / 2f,
-            centerX + guideWidth / 2f,
-            centerY + guideHeight / 2f
-        )
-
-        drawDimmedOutsideGuide(canvas)
+        drawDimmedOutsideGuide(canvas, centerX, centerY, radius)
 
         guidePaint.color = colorForStatus(status)
-        canvas.drawOval(guideRect, guidePaint)
+        canvas.drawCircle(centerX, centerY, radius, guidePaint)
 
-        drawGuideText(canvas, centerX)
+        drawGuideText(canvas, centerX, centerY + radius)
     }
 
-    private fun drawDimmedOutsideGuide(canvas: Canvas) {
+    private fun drawDimmedOutsideGuide(
+        canvas: Canvas,
+        centerX: Float,
+        centerY: Float,
+        radius: Float
+    ) {
         val overlayPath = Path().apply {
             fillType = Path.FillType.EVEN_ODD
             addRect(0f, 0f, width.toFloat(), height.toFloat(), Path.Direction.CW)
-            addOval(guideRect, Path.Direction.CCW)
+            addCircle(centerX, centerY, radius, Path.Direction.CCW)
         }
         canvas.drawPath(overlayPath, dimPaint)
     }
 
-    private fun drawGuideText(canvas: Canvas, centerX: Float) {
+    private fun drawGuideText(canvas: Canvas, centerX: Float, circleBottom: Float) {
         val hasProgress = progressText != null
-        val messageY = (guideRect.bottom + 58f).coerceAtMost(height - if (hasProgress) 82f else 42f)
+        val messageY = (circleBottom + 58f).coerceAtMost(height - if (hasProgress) 82f else 42f)
         val progressY = messageY + 42f
         val backgroundHeight = if (hasProgress) 96f else 58f
 
-        messageBackgroundRect.set(
+        canvas.drawRoundRect(
             28f,
             messageY - 42f,
             width - 28f,
-            messageY - 42f + backgroundHeight
+            messageY - 42f + backgroundHeight,
+            20f,
+            20f,
+            messageBackgroundPaint
         )
-        canvas.drawRoundRect(messageBackgroundRect, 20f, 20f, messageBackgroundPaint)
         canvas.drawText(message, centerX, messageY, messagePaint)
         progressText?.let {
             canvas.drawText(it, centerX, progressY, progressPaint)

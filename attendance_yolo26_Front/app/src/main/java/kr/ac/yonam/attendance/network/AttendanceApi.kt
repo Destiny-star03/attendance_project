@@ -4,7 +4,9 @@ import kr.ac.yonam.attendance.model.ActiveSessionResponse
 import kr.ac.yonam.attendance.model.AttendanceListResponse
 import kr.ac.yonam.attendance.model.AttendanceResponse
 import kr.ac.yonam.attendance.model.ClassroomListResponse
+import kr.ac.yonam.attendance.model.ClassroomResponse
 import kr.ac.yonam.attendance.model.CommonResponse
+import kr.ac.yonam.attendance.model.CreateClassroomRequest
 import kr.ac.yonam.attendance.model.CreateSessionRequest
 import kr.ac.yonam.attendance.model.CreateSubjectRequest
 import kr.ac.yonam.attendance.model.CurrentSessionResponse
@@ -114,7 +116,30 @@ interface AttendanceApi {
     suspend fun getSubjects(): SubjectListResponse
 
     @GET("classrooms")
-    suspend fun getClassrooms(): ClassroomListResponse
+    suspend fun getClassrooms(
+        @Query("active_only") activeOnly: Boolean? = null
+    ): Response<ClassroomListResponse>
+
+    @POST("classrooms")
+    suspend fun createClassroom(
+        @Body request: CreateClassroomRequest
+    ): Response<ClassroomResponse>
+
+    @GET("classrooms/{classroom_id}")
+    suspend fun getClassroom(
+        @Path("classroom_id") classroomId: Int
+    ): Response<ClassroomResponse>
+
+    @PUT("classrooms/{classroom_id}")
+    suspend fun updateClassroom(
+        @Path("classroom_id") classroomId: Int,
+        @Body request: CreateClassroomRequest
+    ): Response<ClassroomResponse>
+
+    @DELETE("classrooms/{classroom_id}")
+    suspend fun deleteClassroom(
+        @Path("classroom_id") classroomId: Int
+    ): Response<ClassroomResponse>
 
     @POST("subjects")
     suspend fun createSubject(
