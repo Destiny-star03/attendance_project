@@ -11,6 +11,8 @@ data class Student(
     val department: String? = null,
     @SerializedName("created_at")
     val createdAt: String? = null,
+    @SerializedName("is_active")
+    val isActive: Boolean? = null,
     val attendanceStatus: String? = null,
     val status: String? = null
 )

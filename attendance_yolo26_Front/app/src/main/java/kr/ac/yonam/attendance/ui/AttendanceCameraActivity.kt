@@ -15,6 +15,7 @@ import androidx.camera.lifecycle.ProcessCameraProvider
 import androidx.core.content.ContextCompat
 import androidx.lifecycle.lifecycleScope
 import androidx.recyclerview.widget.LinearLayoutManager
+import kotlinx.coroutines.Job
 import kotlinx.coroutines.delay
 import kotlinx.coroutines.launch
 import kr.ac.yonam.attendance.R
@@ -37,6 +38,7 @@ class AttendanceCameraActivity : AppCompatActivity() {
 
     private var cameraProvider: ProcessCameraProvider? = null
     private var activeSessionId: Int? = null
+    private var activeSessionRefreshJob: Job? = null
     private val studentItems = mutableListOf<AttendanceItem>()
 
     @Volatile
@@ -70,19 +72,38 @@ class AttendanceCameraActivity : AppCompatActivity() {
 
         repository = AttendanceRepository(serverUrl)
         cameraExecutor = Executors.newSingleThreadExecutor()
+        activeSessionId = intent.getIntExtra(EXTRA_SESSION_ID, -1).takeIf { it > 0 }
 
         setupStudentList()
         bindActions()
         showInitialRecognitionState()
         loadStudents()
         checkServerConnection()
-        loadActiveSession()
         ensureCameraPermission()
+    }
+
+    override fun onResume() {
+        super.onResume()
+        startActiveSessionAutoRefresh()
+    }
+
+    override fun onPause() {
+        activeSessionRefreshJob?.cancel()
+        activeSessionRefreshJob = null
+        super.onPause()
     }
 
     private fun setupStudentList() {
         adapter = AttendanceAdapter { item ->
             StudentDetailDialog.newInstance(item, serverUrl).show(supportFragmentManager, StudentDetailDialog.TAG)
+        }
+        supportFragmentManager.setFragmentResultListener(
+            StudentDetailDialog.REQUEST_KEY,
+            this
+        ) { _, bundle ->
+            if (bundle.getBoolean(StudentDetailDialog.KEY_DELETED, false)) {
+                loadStudents()
+            }
         }
         binding.recyclerStudents.layoutManager = LinearLayoutManager(this)
         binding.recyclerStudents.adapter = adapter
@@ -177,6 +198,7 @@ class AttendanceCameraActivity : AppCompatActivity() {
 
         if (activeSessionId == null) {
             imageProxy.close()
+            pauseUntilMillis = now + NO_SESSION_MESSAGE_INTERVAL_MILLIS
             showNoCurrentSession()
             return
         }
@@ -215,14 +237,16 @@ class AttendanceCameraActivity : AppCompatActivity() {
             "already_attended" -> showAlreadyAttended(response)
             "unknown" -> showUnknown()
             "multiple_faces" -> showMultipleFaces()
+            "no_current_session" -> showNoCurrentSession()
             "network_error" -> showNetworkError(response.message)
-            else -> showNetworkError(response.message ?: "서버 응답을 확인할 수 없습니다.")
+            "server_error", "http_error", "empty_body", "client_error" -> showServerError(response.message)
+            else -> showServerError(response.message ?: "서버 오류가 발생했습니다.")
         }
     }
 
     private fun showNoFace() {
-        binding.faceGuideOverlay.setGuideState("no_face", "얼굴을 원 안에 맞춰주세요")
-        showRecognitionMessage("얼굴을 화면에 맞춰주세요", R.color.text_primary)
+        binding.faceGuideOverlay.setGuideState("no_face", "얼굴을 원 안에 맞춰주세요.")
+        showRecognitionMessage("얼굴을 원 안에 맞춰주세요.", R.color.text_primary)
         binding.textRecognitionTimer.text = "0.0 / 3초"
         binding.textRecognizedStudent.text = "현재 인식된 학생: -"
         binding.progressRecognition.progress = 0
@@ -233,10 +257,10 @@ class AttendanceCameraActivity : AppCompatActivity() {
         val hold = response.holdSeconds ?: 3.0
         binding.faceGuideOverlay.setGuideState(
             "recognizing",
-            "인식 중...",
+            "인식 중입니다.",
             "${formatSeconds(elapsed)} / ${formatSeconds(hold)}초"
         )
-        showRecognitionMessage("인식 중... ${formatSeconds(elapsed)} / ${formatSeconds(hold)}초", R.color.yonam_blue)
+        showRecognitionMessage("인식 중입니다. ${formatSeconds(elapsed)} / ${formatSeconds(hold)}초", R.color.yonam_blue)
         binding.textRecognitionTimer.text = "${formatSeconds(elapsed)} / ${formatSeconds(hold)}초"
         binding.progressRecognition.progress = ((elapsed / hold).coerceIn(0.0, 1.0) * 300).toInt()
         binding.textRecognizedStudent.text = recognizedStudentText(response)
@@ -256,8 +280,8 @@ class AttendanceCameraActivity : AppCompatActivity() {
     }
 
     private fun showAlreadyAttended(response: AttendanceResponse) {
-        binding.faceGuideOverlay.setGuideState("already_attended", "이미 출석함")
-        showRecognitionMessage("이미 출석함", R.color.yonam_blue)
+        binding.faceGuideOverlay.setGuideState("already_attended", "이미 출석했습니다.")
+        showRecognitionMessage("이미 출석했습니다.", R.color.yonam_blue)
         binding.textRecognizedStudent.text = recognizedStudentText(response)
         updateStudentFromRecognition(response, STATUS_ALREADY_ATTENDED)
         loadAttendanceAndSyncStatus()
@@ -265,22 +289,32 @@ class AttendanceCameraActivity : AppCompatActivity() {
     }
 
     private fun showUnknown() {
-        binding.faceGuideOverlay.setGuideState("unknown", "미등록 사용자입니다")
-        showRecognitionMessage("미등록 사용자", R.color.yonam_red)
+        binding.faceGuideOverlay.setGuideState("unknown", "미등록 사용자입니다.")
+        showRecognitionMessage("미등록 사용자입니다.", R.color.yonam_red)
         binding.textRecognizedStudent.text = "현재 인식된 학생: -"
     }
 
     private fun showMultipleFaces() {
-        binding.faceGuideOverlay.setGuideState("multiple_faces", "한 명만 화면에 들어오게 해주세요")
-        showRecognitionMessage("한 명만 촬영해 주세요", R.color.yonam_red)
+        binding.faceGuideOverlay.setGuideState("multiple_faces", "한 명만 화면에 들어오게 해주세요.")
+        showRecognitionMessage("한 명만 화면에 들어오게 해주세요.", R.color.yonam_red)
         binding.textRecognizedStudent.text = "현재 인식된 학생: -"
     }
 
     private fun showNetworkError(message: String?) {
-        binding.faceGuideOverlay.setGuideState("unknown", message ?: "서버 오류가 발생했습니다")
-        showRecognitionMessage("서버 연결 오류", R.color.yonam_red)
+        val detail = message?.takeIf { it.isNotBlank() } ?: "서버에 연결할 수 없습니다."
+        binding.faceGuideOverlay.setGuideState("unknown", detail)
+        showRecognitionMessage("서버에 연결할 수 없습니다.", R.color.yonam_red)
         binding.textRecognitionTimer.text = "0.0 / 3초"
-        binding.textRecognizedStudent.text = message ?: "서버 응답을 받지 못했습니다."
+        binding.textRecognizedStudent.text = detail
+        binding.progressRecognition.progress = 0
+    }
+
+    private fun showServerError(message: String?) {
+        val detail = message?.takeIf { it.isNotBlank() } ?: "서버 오류가 발생했습니다."
+        binding.faceGuideOverlay.setGuideState("unknown", detail)
+        showRecognitionMessage(detail, R.color.yonam_red)
+        binding.textRecognitionTimer.text = "0.0 / 3초"
+        binding.textRecognizedStudent.text = detail
         binding.progressRecognition.progress = 0
     }
 
@@ -497,29 +531,48 @@ class AttendanceCameraActivity : AppCompatActivity() {
         }
     }
 
-    private fun loadActiveSession() {
-        lifecycleScope.launch {
-            val classroomId = ClassroomConfig.getSelectedClassroomId(this@AttendanceCameraActivity)
-            if (classroomId == null) {
-                activeSessionId = null
-                showClassroomRequired()
-                startActivity(Intent(this@AttendanceCameraActivity, ClassroomSelectActivity::class.java))
-                return@launch
+    private fun startActiveSessionAutoRefresh() {
+        activeSessionRefreshJob?.cancel()
+        activeSessionRefreshJob = lifecycleScope.launch {
+            while (true) {
+                fetchAndRenderActiveSession()
+                delay(CURRENT_SESSION_REFRESH_INTERVAL_MILLIS)
             }
+        }
+    }
 
-            val response = repository.getCurrentSession(classroomId)
-            val session = if (response.success == true) {
-                response.session
-            } else {
-                repository.getActiveSession().session
-            }
+    private suspend fun fetchAndRenderActiveSession() {
+        val classroomId = ClassroomConfig.getSelectedClassroomId(this@AttendanceCameraActivity)
+        if (classroomId == null) {
+            activeSessionId = null
+            showClassroomRequired()
+            startActivity(Intent(this@AttendanceCameraActivity, ClassroomSelectActivity::class.java))
+            return
+        }
 
-            activeSessionId = session?.sessionId
-            showCurrentSessionInfo(session)
-            if (activeSessionId == null) {
-                showNoCurrentSession()
-            } else {
+        val response = repository.getCurrentSession(classroomId)
+        val session = response.session
+
+        when {
+            response.success == true && session?.resolvedSessionId != null -> {
+                activeSessionId = session.resolvedSessionId
+                showCurrentSessionInfo(session)
                 loadAttendanceAndSyncStatus()
+            }
+            response.status == "no_current_session" || response.success == true -> {
+                activeSessionId = null
+                showCurrentSessionInfo(null)
+                showNoCurrentSession()
+            }
+            response.status == "network_error" -> {
+                activeSessionId = null
+                showCurrentSessionInfo(null)
+                showNetworkError(response.message)
+            }
+            else -> {
+                activeSessionId = null
+                showCurrentSessionInfo(null)
+                showServerError(response.message ?: "현재 수업 정보를 불러오지 못했습니다.")
             }
         }
     }
@@ -566,7 +619,7 @@ class AttendanceCameraActivity : AppCompatActivity() {
             getString(R.string.current_classroom_session_empty)
         )
         showRecognitionMessage(getString(R.string.current_classroom_session_empty), R.color.yonam_red)
-        binding.textRecognitionTimer.text = "0.0 / 3珥?"
+        binding.textRecognitionTimer.text = "0.0 / 3초"
         binding.textRecognizedStudent.text = "-"
         binding.progressRecognition.progress = 0
     }
@@ -607,6 +660,8 @@ class AttendanceCameraActivity : AppCompatActivity() {
     override fun onDestroy() {
         isScreenDestroyed = true
         isRequesting = false
+        activeSessionRefreshJob?.cancel()
+        activeSessionRefreshJob = null
         cameraProvider?.unbindAll()
         cameraProvider = null
         if (::cameraExecutor.isInitialized) {
@@ -621,8 +676,11 @@ class AttendanceCameraActivity : AppCompatActivity() {
 
     companion object {
         const val EXTRA_SERVER_URL = "extra_server_url"
+        const val EXTRA_SESSION_ID = "extra_session_id"
         private const val REQUEST_INTERVAL_MILLIS = 800L
+        private const val NO_SESSION_MESSAGE_INTERVAL_MILLIS = 1000L
         private const val RESULT_HOLD_MILLIS = 2500L
+        private const val CURRENT_SESSION_REFRESH_INTERVAL_MILLIS = 30_000L
 
         private const val STATUS_PENDING = "pending"
         private const val STATUS_RECOGNIZING = "recognizing"

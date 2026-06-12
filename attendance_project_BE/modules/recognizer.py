@@ -139,6 +139,7 @@ class FaceRecognizer:
                 """
                 SELECT id, face_encoding
                 FROM students
+                WHERE COALESCE(is_active, 1) = 1
                 ORDER BY id ASC
                 """
             ).fetchall()

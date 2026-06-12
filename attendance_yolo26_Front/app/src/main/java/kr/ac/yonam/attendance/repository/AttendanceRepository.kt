@@ -25,13 +25,16 @@ import kr.ac.yonam.attendance.model.StudentsResponse
 import kr.ac.yonam.attendance.model.SubjectListResponse
 import kr.ac.yonam.attendance.model.SubjectResponse
 import kr.ac.yonam.attendance.model.SubjectStudentResponse
+import kr.ac.yonam.attendance.model.UpdateAttendanceStatusRequest
 import kr.ac.yonam.attendance.network.ApiClient
 import kr.ac.yonam.attendance.network.AttendanceApi
 import kr.ac.yonam.attendance.util.ImageUtil
 import okhttp3.MediaType.Companion.toMediaType
 import okhttp3.RequestBody
 import okhttp3.RequestBody.Companion.toRequestBody
+import org.json.JSONObject
 import retrofit2.Response
+import java.io.IOException
 
 class AttendanceRepository private constructor(
     private val api: AttendanceApi
@@ -54,10 +57,35 @@ class AttendanceRepository private constructor(
     }
 
     suspend fun getCurrentSession(classroomId: Int): CurrentSessionResponse {
-        return safeCall(
-            call = { api.getCurrentSession(classroomId) },
-            fallback = { CurrentSessionResponse(success = false, message = it) }
-        )
+        return try {
+            val response = api.getCurrentSession(classroomId)
+            if (response.isSuccessful) {
+                response.body() ?: CurrentSessionResponse(
+                    success = false,
+                    status = "empty_body",
+                    message = "현재 수업 조회 응답이 비어 있습니다."
+                )
+            } else {
+                parseCurrentSessionError(response.errorBody()?.string())
+                    ?: CurrentSessionResponse(
+                        success = false,
+                        status = "server_error",
+                        message = "현재 수업 조회 서버 오류가 발생했습니다. (HTTP ${response.code()})"
+                    )
+            }
+        } catch (error: IOException) {
+            CurrentSessionResponse(
+                success = false,
+                status = "network_error",
+                message = error.message ?: "서버 연결 오류가 발생했습니다."
+            )
+        } catch (error: Exception) {
+            CurrentSessionResponse(
+                success = false,
+                status = "client_error",
+                message = error.message ?: "현재 수업 조회 응답을 처리하지 못했습니다."
+            )
+        }
     }
 
     suspend fun getSessions(): SessionListResponse {
@@ -67,11 +95,55 @@ class AttendanceRepository private constructor(
         )
     }
 
+    suspend fun deleteSession(sessionId: Int): CommonResponse {
+        return safeCall(
+            call = { api.deleteSession(sessionId) },
+            fallback = {
+                CommonResponse(
+                    success = false,
+                    status = "server_error",
+                    message = it,
+                    deleted = false
+                )
+            }
+        )
+    }
+
+    suspend fun getSessionAttendanceStudents(sessionId: Int): AttendanceListResponse {
+        return safeCall(
+            call = { api.getSessionAttendanceStudents(sessionId) },
+            fallback = { AttendanceListResponse(success = false, message = it, items = emptyList()) }
+        )
+    }
+
+    suspend fun updateSessionAttendanceStatus(
+        sessionId: Int,
+        studentId: Int,
+        status: String
+    ): CommonResponse {
+        return safeCall(
+            call = {
+                api.updateSessionAttendanceStatus(
+                    sessionId = sessionId,
+                    studentId = studentId,
+                    request = UpdateAttendanceStatusRequest(status)
+                )
+            },
+            fallback = {
+                CommonResponse(
+                    success = false,
+                    status = "server_error",
+                    message = it
+                )
+            }
+        )
+    }
+
     suspend fun getAttendance(
         sessionId: Int? = null,
         date: String? = null
     ): AttendanceListResponse {
-        // ?숈깮 紐⑸줉 API媛 ?놁쓣 ?뚮룄 異쒖꽍 ?붾㈃? ???묐떟??items濡??곹깭瑜??숆린?뷀븳??
+        // 학생 목록 API가 없어도 출석 화면은 이 응답의 items로 상태를 동기화한다.
         return safeCall(
             call = { api.getAttendance(sessionId = sessionId, date = date) },
             fallback = { AttendanceListResponse(success = false, message = it) }
@@ -84,18 +156,25 @@ class AttendanceRepository private constructor(
             if (response.isSuccessful) {
                 response.body() ?: StudentsResponse(
                     success = false,
-                    message = "?숈깮 紐⑸줉 ?묐떟??鍮꾩뼱 ?덉뒿?덈떎."
+                    message = "학생 목록 응답이 비어 있습니다."
                 )
             } else {
+                val serverMessage = parseErrorMessage(response.errorBody()?.string())
                 StudentsResponse(
                     success = false,
-                    message = "?숈깮 紐⑸줉??遺덈윭?ㅼ? 紐삵뻽?듬땲?? (HTTP ${response.code()})"
+                    message = serverMessage
+                        ?: "학생 목록을 불러오지 못했습니다. (HTTP ${response.code()})"
                 )
             }
+        } catch (error: IOException) {
+            StudentsResponse(
+                success = false,
+                message = "학생 목록 조회 중 네트워크 오류가 발생했습니다: ${error.message ?: "알 수 없는 오류"}"
+            )
         } catch (error: Exception) {
             StudentsResponse(
                 success = false,
-                message = "?숈깮 紐⑸줉 議고쉶 以??ㅽ듃?뚰겕 ?ㅻ쪟媛 諛쒖깮?덉뒿?덈떎: ${error.message ?: "?????녿뒗 ?ㅻ쪟"}"
+                message = "학생 목록 응답 처리 오류가 발생했습니다: ${error.message ?: "알 수 없는 오류"}"
             )
         }
     }
@@ -106,20 +185,34 @@ class AttendanceRepository private constructor(
             if (response.isSuccessful) {
                 response.body() ?: StudentStatsResponse(
                     success = false,
-                    message = "?숈깮 ?듦퀎 ?묐떟??鍮꾩뼱 ?덉뒿?덈떎."
+                    message = "학생 통계 응답이 비어 있습니다."
                 )
             } else {
                 StudentStatsResponse(
                     success = false,
-                    message = "?숈깮 ?듦퀎瑜?遺덈윭?ㅼ? 紐삵뻽?듬땲?? (HTTP ${response.code()})"
+                    message = "학생 통계를 불러오지 못했습니다. (HTTP ${response.code()})"
                 )
             }
         } catch (error: Exception) {
             StudentStatsResponse(
                 success = false,
-                message = "?숈깮 ?듦퀎 議고쉶 以??ㅽ듃?뚰겕 ?ㅻ쪟媛 諛쒖깮?덉뒿?덈떎: ${error.message ?: "?????녿뒗 ?ㅻ쪟"}"
+                message = "학생 통계 조회 중 네트워크 오류가 발생했습니다: ${error.message ?: "알 수 없는 오류"}"
             )
         }
+    }
+
+    suspend fun deleteStudent(studentId: Int): CommonResponse {
+        return safeCall(
+            call = { api.deleteStudent(studentId) },
+            fallback = {
+                CommonResponse(
+                    success = false,
+                    status = "server_error",
+                    message = it,
+                    deleted = false
+                )
+            }
+        )
     }
 
     suspend fun getSubjects(): SubjectListResponse {
@@ -352,6 +445,13 @@ class AttendanceRepository private constructor(
         )
     }
 
+    suspend fun getSubjectSessions(subjectId: Int): SessionListResponse {
+        return safeCall(
+            call = { api.getSubjectSessions(subjectId) },
+            fallback = { SessionListResponse(success = false, message = it, items = emptyList()) }
+        )
+    }
+
     suspend fun addStudentToSubject(subjectId: Int, studentId: Int): CommonResponse {
         return safeCall(
             call = { api.addStudentToSubject(subjectId, studentId) },
@@ -405,8 +505,7 @@ class AttendanceRepository private constructor(
                 startTime = startTime,
                 endTime = endTime,
                 classroomId = classroomId,
-                dayOfWeek = dayOfWeek,
-                activate = activate
+                dayOfWeek = dayOfWeek
             )
         )
     }
@@ -415,21 +514,47 @@ class AttendanceRepository private constructor(
         jpegBytes: ByteArray,
         sessionId: Int? = null
     ): AttendanceResponse {
-        return safeCall(
-            call = {
-                api.recognizeAttendance(
-                    image = ImageUtil.createJpegImagePart(jpegBytes),
-                    sessionId = sessionId?.let { textPart(it.toString()) }
-                )
-            },
-            fallback = {
-                AttendanceResponse(
+        if (sessionId == null) {
+            return AttendanceResponse(
+                success = false,
+                status = "no_current_session",
+                message = "현재 진행 중인 수업이 없습니다."
+            )
+        }
+
+        return try {
+            val response = api.recognizeAttendance(
+                image = ImageUtil.createJpegImagePart(jpegBytes),
+                sessionId = textPart(sessionId.toString())
+            )
+
+            if (response.isSuccessful) {
+                response.body() ?: AttendanceResponse(
                     success = false,
-                    status = "network_error",
-                    message = it
+                    status = "empty_body",
+                    message = "출석 인식 응답이 비어 있습니다."
                 )
+            } else {
+                parseAttendanceError(response.errorBody()?.string())
+                    ?: AttendanceResponse(
+                        success = false,
+                        status = "server_error",
+                        message = "출석 인식 서버 오류가 발생했습니다. (HTTP ${response.code()})"
+                    )
             }
-        )
+        } catch (error: IOException) {
+            AttendanceResponse(
+                success = false,
+                status = "network_error",
+                message = error.message ?: "서버 연결 오류가 발생했습니다."
+            )
+        } catch (error: Exception) {
+            AttendanceResponse(
+                success = false,
+                status = "client_error",
+                message = error.message ?: "출석 인식 응답을 처리하지 못했습니다."
+            )
+        }
     }
 
     suspend fun registerStudent(
@@ -543,12 +668,50 @@ class AttendanceRepository private constructor(
         return try {
             call()
         } catch (error: Exception) {
-            fallback(error.message ?: "?ㅽ듃?뚰겕 ?ㅻ쪟媛 諛쒖깮?덉뒿?덈떎.")
+            fallback(error.message ?: "네트워크 오류가 발생했습니다.")
         }
     }
 
     private fun textPart(value: String): RequestBody {
         return value.toRequestBody("text/plain".toMediaType())
+    }
+
+    private fun parseAttendanceError(errorBody: String?): AttendanceResponse? {
+        if (errorBody.isNullOrBlank()) return null
+
+        return runCatching {
+            val json = JSONObject(errorBody)
+            AttendanceResponse(
+                success = json.optBoolean("success", false),
+                status = json.optString("status").takeIf { it.isNotBlank() } ?: "server_error",
+                message = json.optString("message").takeIf { it.isNotBlank() }
+                    ?: "출석 인식 서버 오류가 발생했습니다."
+            )
+        }.getOrNull()
+    }
+
+    private fun parseCurrentSessionError(errorBody: String?): CurrentSessionResponse? {
+        if (errorBody.isNullOrBlank()) return null
+
+        return runCatching {
+            val json = JSONObject(errorBody)
+            CurrentSessionResponse(
+                success = json.optBoolean("success", false),
+                status = json.optString("status").takeIf { it.isNotBlank() } ?: "server_error",
+                message = json.optString("message").takeIf { it.isNotBlank() }
+                    ?: "현재 수업 조회 서버 오류가 발생했습니다."
+            )
+        }.getOrNull()
+    }
+
+    private fun parseErrorMessage(errorBody: String?): String? {
+        if (errorBody.isNullOrBlank()) return null
+
+        return runCatching {
+            JSONObject(errorBody)
+                .optString("message")
+                .takeIf { it.isNotBlank() }
+        }.getOrNull()
     }
 
     private fun classroomListResponse(

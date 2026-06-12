@@ -111,63 +111,6 @@
                     </LinearLayout>
                 </com.google.android.material.card.MaterialCardView>
 
-                <com.google.android.material.card.MaterialCardView
-                    android:layout_width="0dp"
-                    android:layout_height="wrap_content"
-                    android:layout_marginStart="18dp"
-                    android:layout_weight="1"
-                    app:cardBackgroundColor="@color/card_surface"
-                    app:cardCornerRadius="8dp"
-                    app:cardElevation="2dp"
-                    app:strokeColor="@color/divider"
-                    app:strokeWidth="1dp">
-
-                    <LinearLayout
-                        android:layout_width="match_parent"
-                        android:layout_height="wrap_content"
-                        android:orientation="vertical">
-
-                        <View
-                            android:layout_width="match_parent"
-                            android:layout_height="5dp"
-                            android:background="@color/accent_purple" />
-
-                        <LinearLayout
-                            android:layout_width="match_parent"
-                            android:layout_height="wrap_content"
-                            android:orientation="vertical"
-                            android:padding="22dp">
-
-                            <TextView
-                                android:layout_width="match_parent"
-                                android:layout_height="wrap_content"
-                                android:text="@string/role_select_admin_title"
-                                android:textColor="@color/text_primary"
-                                android:textSize="22sp"
-                                android:textStyle="bold" />
-
-                            <TextView
-                                android:layout_width="match_parent"
-                                android:layout_height="wrap_content"
-                                android:layout_marginTop="8dp"
-                                android:minHeight="44dp"
-                                android:text="@string/role_select_admin_description"
-                                android:textColor="@color/text_secondary"
-                                android:textSize="15sp" />
-
-                            <com.google.android.material.button.MaterialButton
-                                android:id="@+id/buttonStartAdmin"
-                                android:layout_width="match_parent"
-                                android:layout_height="52dp"
-                                android:layout_marginTop="20dp"
-                                android:text="@string/role_select_admin_button"
-                                android:textAllCaps="false"
-                                android:textColor="@android:color/white"
-                                app:backgroundTint="@color/accent_purple"
-                                app:cornerRadius="8dp" />
-                        </LinearLayout>
-                    </LinearLayout>
-                </com.google.android.material.card.MaterialCardView>
             </LinearLayout>
 
             <com.google.android.material.card.MaterialCardView
@@ -239,6 +182,17 @@
                         app:cornerRadius="8dp" />
                 </LinearLayout>
             </com.google.android.material.card.MaterialCardView>
+
+            <com.google.android.material.button.MaterialButton
+                android:id="@+id/buttonChangeClassroom"
+                android:layout_width="match_parent"
+                android:layout_height="52dp"
+                android:layout_marginTop="14dp"
+                android:text="@string/role_select_change_classroom"
+                android:textAllCaps="false"
+                android:textColor="@android:color/white"
+                app:backgroundTint="@color/text_secondary"
+                app:cornerRadius="8dp" />
         </LinearLayout>
     </LinearLayout>
 </ScrollView>

@@ -42,15 +42,12 @@ class RoleSelectActivity : AppCompatActivity() {
             )
         }
 
-        binding.buttonStartAdmin.setOnClickListener {
-            startActivity(
-                Intent(this, resolveActivity("AdminMainActivity", SubjectListActivity::class.java))
-                    .putExtra(EXTRA_SERVER_URL, currentServerUrl())
-            )
-        }
-
         binding.buttonServerSetting.setOnClickListener {
             startActivity(Intent(this, ServerSettingActivity::class.java))
+        }
+
+        binding.buttonChangeClassroom.setOnClickListener {
+            startActivity(Intent(this, ClassroomSelectActivity::class.java))
         }
     }
 

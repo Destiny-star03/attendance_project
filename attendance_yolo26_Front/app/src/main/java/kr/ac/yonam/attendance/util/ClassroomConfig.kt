@@ -28,4 +28,12 @@ object ClassroomConfig {
             .putString(KEY_SELECTED_CLASSROOM_NAME, classroom.classroomName.orEmpty())
             .apply()
     }
+
+    fun clearSelectedClassroom(context: Context) {
+        context.getSharedPreferences(PREF_NAME, Context.MODE_PRIVATE)
+            .edit()
+            .remove(KEY_SELECTED_CLASSROOM_ID)
+            .remove(KEY_SELECTED_CLASSROOM_NAME)
+            .apply()
+    }
 }

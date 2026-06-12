@@ -101,27 +101,18 @@ class CreateSessionDialog : DialogFragment() {
                 startTime = startTime,
                 endTime = endTime,
                 classroomId = currentSubject?.classroomId,
-                dayOfWeek = currentSubject?.dayOfWeek,
-                activate = binding.checkActivate.isChecked
+                dayOfWeek = currentSubject?.dayOfWeek
             )
 
             if (response.success == true) {
-                val isActivated = response.session?.isActive == true
                 parentFragmentManager.setFragmentResult(
                     REQUEST_KEY,
                     Bundle().apply {
                         putBoolean(KEY_CREATED, true)
-                        putBoolean(KEY_ACTIVATED, isActivated)
                     }
                 )
                 showMessage(
-                    getString(
-                        if (isActivated) {
-                            R.string.session_created_active
-                        } else {
-                            R.string.session_created_inactive
-                        }
-                    ),
+                    "수업 세션이 생성되었습니다.",
                     isError = false
                 )
                 binding.buttonCreate.isEnabled = false
@@ -170,7 +161,6 @@ class CreateSessionDialog : DialogFragment() {
         binding.editClassDate.isEnabled = !isLoading
         binding.editStartTime.isEnabled = !isLoading
         binding.editEndTime.isEnabled = !isLoading
-        binding.checkActivate.isEnabled = !isLoading
         binding.buttonCreate.isEnabled = !isLoading
         binding.buttonCancel.isEnabled = !isLoading
     }
@@ -242,7 +232,6 @@ class CreateSessionDialog : DialogFragment() {
         const val TAG = "CreateSessionDialog"
         const val REQUEST_KEY = "create_session_result"
         const val KEY_CREATED = "created"
-        const val KEY_ACTIVATED = "activated"
 
         private const val ARG_SERVER_URL = "arg_server_url"
         private const val ARG_SUBJECT_ID = "arg_subject_id"

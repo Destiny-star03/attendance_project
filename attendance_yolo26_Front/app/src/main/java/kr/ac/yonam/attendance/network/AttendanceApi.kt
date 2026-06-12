@@ -22,6 +22,7 @@ import kr.ac.yonam.attendance.model.StudentsResponse
 import kr.ac.yonam.attendance.model.SubjectListResponse
 import kr.ac.yonam.attendance.model.SubjectResponse
 import kr.ac.yonam.attendance.model.SubjectStudentResponse
+import kr.ac.yonam.attendance.model.UpdateAttendanceStatusRequest
 import okhttp3.MultipartBody
 import okhttp3.RequestBody
 import retrofit2.Response
@@ -45,10 +46,27 @@ interface AttendanceApi {
     @GET("sessions/current")
     suspend fun getCurrentSession(
         @Query("classroom_id") classroomId: Int
-    ): CurrentSessionResponse
+    ): Response<CurrentSessionResponse>
 
     @GET("sessions")
     suspend fun getSessions(): SessionListResponse
+
+    @DELETE("sessions/{session_id}")
+    suspend fun deleteSession(
+        @Path("session_id") sessionId: Int
+    ): CommonResponse
+
+    @GET("sessions/{session_id}/attendance-students")
+    suspend fun getSessionAttendanceStudents(
+        @Path("session_id") sessionId: Int
+    ): AttendanceListResponse
+
+    @PUT("sessions/{session_id}/attendance-students/{student_id}")
+    suspend fun updateSessionAttendanceStatus(
+        @Path("session_id") sessionId: Int,
+        @Path("student_id") studentId: Int,
+        @Body request: UpdateAttendanceStatusRequest
+    ): CommonResponse
 
     @GET("attendance")
     suspend fun getAttendance(
@@ -64,12 +82,17 @@ interface AttendanceApi {
         @Path("student_id") studentId: Int
     ): Response<StudentStatsResponse>
 
+    @DELETE("students/{student_id}")
+    suspend fun deleteStudent(
+        @Path("student_id") studentId: Int
+    ): CommonResponse
+
     @Multipart
     @POST("attendance/recognize")
     suspend fun recognizeAttendance(
         @Part image: MultipartBody.Part,
         @Part("session_id") sessionId: RequestBody? = null
-    ): AttendanceResponse
+    ): Response<AttendanceResponse>
 
     @Multipart
     @POST("students")
@@ -166,6 +189,11 @@ interface AttendanceApi {
     suspend fun getSubjectStudents(
         @Path("subject_id") subjectId: Int
     ): SubjectStudentResponse
+
+    @GET("subjects/{subject_id}/sessions")
+    suspend fun getSubjectSessions(
+        @Path("subject_id") subjectId: Int
+    ): SessionListResponse
 
     @POST("subjects/{subject_id}/students/{student_id}")
     suspend fun addStudentToSubject(

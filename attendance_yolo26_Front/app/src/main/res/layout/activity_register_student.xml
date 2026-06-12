@@ -34,7 +34,7 @@
                 android:layout_height="wrap_content"
                 android:layout_marginStart="18dp"
                 android:layout_weight="1"
-                android:text="학생 얼굴 등록"
+                android:text="학생 관리"
                 android:textColor="@android:color/white"
                 android:textSize="24sp"
                 android:textStyle="bold" />
@@ -137,6 +137,33 @@
                         android:textColor="@color/text_secondary"
                         android:textSize="14sp"
                         android:visibility="gone" />
+
+                    <TextView
+                        android:id="@+id/textRegisteredStudentsTitle"
+                        android:layout_width="match_parent"
+                        android:layout_height="wrap_content"
+                        android:layout_marginTop="18dp"
+                        android:text="등록된 학생"
+                        android:textColor="@color/text_primary"
+                        android:textSize="18sp"
+                        android:textStyle="bold" />
+
+                    <TextView
+                        android:id="@+id/textRegisteredStudentsMessage"
+                        android:layout_width="match_parent"
+                        android:layout_height="wrap_content"
+                        android:layout_marginTop="8dp"
+                        android:text="학생 목록을 불러오는 중입니다."
+                        android:textColor="@color/text_secondary"
+                        android:textSize="14sp" />
+
+                    <androidx.recyclerview.widget.RecyclerView
+                        android:id="@+id/recyclerRegisteredStudents"
+                        android:layout_width="match_parent"
+                        android:layout_height="220dp"
+                        android:layout_marginTop="8dp"
+                        android:clipToPadding="false"
+                        android:paddingBottom="4dp" />
                 </LinearLayout>
             </com.google.android.material.card.MaterialCardView>
 

@@ -74,15 +74,6 @@
             android:singleLine="true" />
     </com.google.android.material.textfield.TextInputLayout>
 
-    <CheckBox
-        android:id="@+id/checkActivate"
-        android:layout_width="match_parent"
-        android:layout_height="wrap_content"
-        android:layout_marginTop="12dp"
-        android:checked="false"
-        android:text="@string/session_activate_now"
-        android:textColor="@color/text_primary" />
-
     <TextView
         android:id="@+id/textMessage"
         android:layout_width="match_parent"

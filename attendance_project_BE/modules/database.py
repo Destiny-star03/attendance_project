@@ -68,10 +68,24 @@ def _create_students_table(cursor: sqlite3.Cursor) -> None:
             name TEXT NOT NULL,
             department TEXT,
             face_encoding BLOB NOT NULL,
+            is_active INTEGER DEFAULT 1,
             created_at TEXT NOT NULL
         )
         """
     )
+
+
+def _ensure_students_columns(connection: sqlite3.Connection) -> None:
+    if not _table_exists(connection, "students"):
+        return
+
+    columns = _get_columns(connection, "students")
+    missing_columns = {
+        "is_active": "INTEGER DEFAULT 1",
+    }
+    for column_name, column_type in missing_columns.items():
+        if column_name not in columns:
+            connection.execute(f"ALTER TABLE students ADD COLUMN {column_name} {column_type}")
 
 
 def _create_subjects_table(cursor: sqlite3.Cursor) -> None:
@@ -86,6 +100,7 @@ def _create_subjects_table(cursor: sqlite3.Cursor) -> None:
             day_of_week TEXT,
             start_time TEXT,
             end_time TEXT,
+            is_active INTEGER DEFAULT 1,
             created_at TEXT NOT NULL
         )
         """
@@ -146,6 +161,7 @@ def _ensure_subjects_columns(connection: sqlite3.Connection) -> None:
         "day_of_week": "TEXT",
         "start_time": "TEXT",
         "end_time": "TEXT",
+        "is_active": "INTEGER DEFAULT 1",
     }
     for column_name, column_type in missing_columns.items():
         if column_name not in columns:
@@ -475,6 +491,7 @@ def reset_attendance_tables() -> None:
         cursor.execute("DROP TABLE IF EXISTS attendance")
         cursor.execute("DROP TABLE IF EXISTS attendance_sessions")
         _create_students_table(cursor)
+        _ensure_students_columns(connection)
         _create_classrooms_table(cursor)
         _ensure_classrooms_columns(connection)
         _create_subjects_table(cursor)
@@ -495,6 +512,7 @@ def init_db(verbose: bool = True) -> None:
         connection.execute("PRAGMA foreign_keys = OFF")
         cursor = connection.cursor()
         _create_students_table(cursor)
+        _ensure_students_columns(connection)
         _create_classrooms_table(cursor)
         _ensure_classrooms_columns(connection)
         _create_subjects_table(cursor)

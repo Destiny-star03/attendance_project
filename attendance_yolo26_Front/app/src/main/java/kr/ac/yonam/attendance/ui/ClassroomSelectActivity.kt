@@ -53,7 +53,8 @@ class ClassroomSelectActivity : AppCompatActivity() {
 
             if (response.success == true) {
                 val classrooms = response.items.orEmpty()
-                adapter.submitList(classrooms, ClassroomConfig.getSelectedClassroomId(this@ClassroomSelectActivity))
+                val selectedId = validatedSelectedClassroomId(classrooms)
+                adapter.submitList(classrooms, selectedId)
                 binding.textEmpty.visibility = if (classrooms.isEmpty()) View.VISIBLE else View.GONE
                 binding.buttonEmptyAdmin.visibility = if (classrooms.isEmpty()) View.VISIBLE else View.GONE
             } else {
@@ -81,7 +82,6 @@ class ClassroomSelectActivity : AppCompatActivity() {
             Intent(this, RoleSelectActivity::class.java)
                 .addFlags(Intent.FLAG_ACTIVITY_CLEAR_TOP or Intent.FLAG_ACTIVITY_SINGLE_TOP)
         )
-        finish()
     }
 
     private fun openAdminPage() {
@@ -98,6 +98,19 @@ class ClassroomSelectActivity : AppCompatActivity() {
         } else {
             getString(R.string.classroom_selected_format, selectedName)
         }
+    }
+
+    private fun validatedSelectedClassroomId(classrooms: List<Classroom>): Int? {
+        val selectedId = ClassroomConfig.getSelectedClassroomId(this)
+        val isValid = selectedId != null && classrooms.any { it.resolvedClassroomId == selectedId }
+        if (!isValid) {
+            ClassroomConfig.clearSelectedClassroom(this)
+            updateSelectedClassroom()
+            return null
+        }
+
+        updateSelectedClassroom()
+        return selectedId
     }
 
     private fun showMessage(message: String, isError: Boolean) {

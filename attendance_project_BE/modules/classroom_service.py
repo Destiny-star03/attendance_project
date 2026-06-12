@@ -44,6 +44,18 @@ def _fetch_classroom(connection: sqlite3.Connection, classroom_id: int) -> sqlit
     ).fetchone()
 
 
+def _fetch_classroom_by_name(connection: sqlite3.Connection, classroom_name: str) -> sqlite3.Row | None:
+    return connection.execute(
+        """
+        SELECT id, classroom_name, building_name, floor, description, is_active, created_at
+        FROM classrooms
+        WHERE classroom_name = ?
+        LIMIT 1
+        """,
+        (classroom_name,),
+    ).fetchone()
+
+
 def _error(message: str, status: str = "bad_request", *, classroom: Any = None) -> dict[str, Any]:
     return {
         "success": False,
@@ -66,6 +78,38 @@ def create_classroom(
             return _error("강의실명을 입력해 주세요.")
 
         with get_connection() as connection:
+            existing = _fetch_classroom_by_name(connection, normalized_name)
+            if existing is not None:
+                if bool(existing["is_active"]):
+                    return _error("이미 등록된 강의실명입니다.", classroom=_classroom_payload(existing))
+
+                connection.execute(
+                    """
+                    UPDATE classrooms
+                    SET
+                        building_name = ?,
+                        floor = ?,
+                        description = ?,
+                        is_active = 1,
+                        created_at = ?
+                    WHERE id = ?
+                    """,
+                    (
+                        _normalize_text(building_name),
+                        _normalize_text(floor),
+                        _normalize_text(description),
+                        _now_text(),
+                        existing["id"],
+                    ),
+                )
+                row = _fetch_classroom(connection, int(existing["id"]))
+                connection.commit()
+                return {
+                    "success": True,
+                    "message": "강의실을 다시 활성화했습니다.",
+                    "classroom": _classroom_payload(row),
+                }
+
             cursor = connection.execute(
                 """
                 INSERT INTO classrooms (

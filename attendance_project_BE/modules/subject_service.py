@@ -26,6 +26,7 @@ def _subject_payload(row: sqlite3.Row | None) -> dict[str, Any] | None:
         "day_of_week": row["day_of_week"] if "day_of_week" in row.keys() else None,
         "start_time": row["start_time"] if "start_time" in row.keys() else None,
         "end_time": row["end_time"] if "end_time" in row.keys() else None,
+        "is_active": bool(row["is_active"]) if "is_active" in row.keys() else True,
         "created_at": row["created_at"],
     }
     if "student_count" in row.keys():
@@ -39,6 +40,7 @@ def _student_payload(row: sqlite3.Row) -> dict[str, Any]:
         "student_no": row["student_no"],
         "name": row["name"],
         "department": row["department"],
+        "is_active": bool(row["is_active"]) if "is_active" in row.keys() else True,
         "created_at": row["created_at"],
     }
 
@@ -66,12 +68,14 @@ def _fetch_subject(connection: sqlite3.Connection, subject_id: int) -> sqlite3.R
             subjects.day_of_week,
             subjects.start_time,
             subjects.end_time,
+            subjects.is_active,
             subjects.created_at,
             COUNT(subject_students.id) AS student_count
         FROM subjects
         LEFT JOIN subject_students ON subject_students.subject_id = subjects.id
         LEFT JOIN classrooms ON classrooms.id = subjects.classroom_id
         WHERE subjects.id = ?
+          AND COALESCE(subjects.is_active, 1) = 1
         GROUP BY subjects.id
         """,
         (subject_id,),
@@ -80,7 +84,7 @@ def _fetch_subject(connection: sqlite3.Connection, subject_id: int) -> sqlite3.R
 
 def _student_exists(connection: sqlite3.Connection, student_id: int) -> bool:
     row = connection.execute(
-        "SELECT 1 FROM students WHERE id = ? LIMIT 1",
+        "SELECT 1 FROM students WHERE id = ? AND COALESCE(is_active, 1) = 1 LIMIT 1",
         (student_id,),
     ).fetchone()
     return row is not None
@@ -168,11 +172,13 @@ def get_subjects() -> dict[str, Any]:
                     subjects.day_of_week,
                     subjects.start_time,
                     subjects.end_time,
+                    subjects.is_active,
                     subjects.created_at,
                     COUNT(subject_students.id) AS student_count
                 FROM subjects
                 LEFT JOIN subject_students ON subject_students.subject_id = subjects.id
                 LEFT JOIN classrooms ON classrooms.id = subjects.classroom_id
+                WHERE COALESCE(subjects.is_active, 1) = 1
                 GROUP BY subjects.id
                 ORDER BY subjects.id DESC
                 """
@@ -286,17 +292,27 @@ def delete_subject(subject_id: int) -> dict[str, Any]:
             if subject is None:
                 return {"success": False, "message": "과목을 찾을 수 없습니다.", "deleted": False}
 
-            student_count = connection.execute(
-                "SELECT COUNT(*) AS count FROM subject_students WHERE subject_id = ?",
+            attendance_count = connection.execute(
+                """
+                SELECT COUNT(*) AS count
+                FROM attendance
+                JOIN attendance_sessions ON attendance_sessions.id = attendance.session_id
+                WHERE attendance_sessions.subject_id = ?
+                """,
                 (subject_id,),
             ).fetchone()["count"]
-            if int(student_count or 0) > 0:
-                return {
-                    "success": False,
-                    "message": "수강생이 등록된 과목은 삭제할 수 없습니다.",
-                    "deleted": False,
-                }
 
+            if int(attendance_count or 0) > 0:
+                connection.execute("UPDATE subjects SET is_active = 0 WHERE id = ?", (subject_id,))
+                connection.execute(
+                    "UPDATE attendance_sessions SET is_active = 0 WHERE subject_id = ?",
+                    (subject_id,),
+                )
+                connection.commit()
+                return {"success": True, "message": "과목이 비활성화되었습니다.", "deleted": False}
+
+            connection.execute("DELETE FROM subject_students WHERE subject_id = ?", (subject_id,))
+            connection.execute("UPDATE attendance_sessions SET subject_id = NULL WHERE subject_id = ?", (subject_id,))
             connection.execute("DELETE FROM subjects WHERE id = ?", (subject_id,))
             connection.commit()
 
@@ -388,10 +404,11 @@ def get_subject_students(subject_id: int) -> dict[str, Any]:
 
             rows = connection.execute(
                 """
-                SELECT students.id, students.student_no, students.name, students.department, students.created_at
+                SELECT students.id, students.student_no, students.name, students.department, students.is_active, students.created_at
                 FROM subject_students
                 JOIN students ON students.id = subject_students.student_id
                 WHERE subject_students.subject_id = ?
+                  AND COALESCE(students.is_active, 1) = 1
                 ORDER BY students.student_no ASC, students.id ASC
                 """,
                 (subject_id,),
@@ -426,11 +443,13 @@ def get_student_subjects(student_id: int) -> dict[str, Any]:
                     subjects.day_of_week,
                     subjects.start_time,
                     subjects.end_time,
+                    subjects.is_active,
                     subjects.created_at
                 FROM subject_students
                 JOIN subjects ON subjects.id = subject_students.subject_id
                 LEFT JOIN classrooms ON classrooms.id = subjects.classroom_id
                 WHERE subject_students.student_id = ?
+                  AND COALESCE(subjects.is_active, 1) = 1
                 ORDER BY subjects.id DESC
                 """,
                 (student_id,),

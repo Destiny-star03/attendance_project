@@ -32,6 +32,15 @@ class AttendanceListActivity : AppCompatActivity() {
             StudentDetailDialog.newInstance(item, serverUrl).show(supportFragmentManager, StudentDetailDialog.TAG)
         }
 
+        supportFragmentManager.setFragmentResultListener(
+            StudentDetailDialog.REQUEST_KEY,
+            this
+        ) { _, bundle ->
+            if (bundle.getBoolean(StudentDetailDialog.KEY_DELETED, false)) {
+                loadAttendance()
+            }
+        }
+
         binding.recyclerAttendance.layoutManager = LinearLayoutManager(this)
         binding.recyclerAttendance.adapter = adapter
 
@@ -68,13 +77,14 @@ class AttendanceListActivity : AppCompatActivity() {
                 }
 
                 showSession(session)
-                if (session?.sessionId == null) {
+                val sessionId = session?.resolvedSessionId
+                if (sessionId == null) {
                     showError(getString(R.string.current_classroom_session_empty))
                     showAttendanceItems(emptyList())
                     return@launch
                 }
 
-                val response = repository.getAttendance(sessionId = session.sessionId)
+                val response = repository.getAttendance(sessionId = sessionId)
 
                 if (response.success == true) {
                     showAttendanceItems(response.items.orEmpty())

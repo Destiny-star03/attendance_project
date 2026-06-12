@@ -46,9 +46,10 @@ def add_student(
                     name,
                     department,
                     face_encoding,
+                    is_active,
                     created_at
                 )
-                VALUES (?, ?, ?, ?, ?)
+                VALUES (?, ?, ?, ?, 1, ?)
                 """,
                 (student_no, name, department, sqlite3.Binary(face_encoding), created_at),
             )
@@ -145,9 +146,10 @@ def get_student_by_id(student_id: int) -> dict[str, Any] | None:
         with get_connection() as connection:
             row = connection.execute(
                 """
-                SELECT id, student_no, name, department, created_at
+                SELECT id, student_no, name, department, is_active, created_at
                 FROM students
                 WHERE id = ?
+                  AND COALESCE(is_active, 1) = 1
                 """,
                 (student_id,),
             ).fetchone()
@@ -226,9 +228,10 @@ def get_student_by_student_no(student_no: str) -> dict[str, Any] | None:
         with get_connection() as connection:
             row = connection.execute(
                 """
-                SELECT id, student_no, name, department, created_at
+                SELECT id, student_no, name, department, is_active, created_at
                 FROM students
                 WHERE student_no = ?
+                  AND COALESCE(is_active, 1) = 1
                 """,
                 (student_no.strip(),),
             ).fetchone()
@@ -247,8 +250,9 @@ def get_all_students() -> list[dict[str, Any]]:
         with get_connection() as connection:
             rows = connection.execute(
                 """
-                SELECT id, student_no, name, department, created_at
+                SELECT id, student_no, name, department, is_active, created_at
                 FROM students
+                WHERE COALESCE(is_active, 1) = 1
                 ORDER BY id ASC
                 """
             ).fetchall()
@@ -275,3 +279,42 @@ def is_student_no_exists(student_no: str) -> bool:
     except sqlite3.Error as error:
         print(f"데이터베이스 오류가 발생했습니다: {error}")
         return False
+
+
+def delete_student(student_id: int) -> dict[str, Any]:
+    try:
+        init_db(verbose=False)
+
+        with get_connection() as connection:
+            student = connection.execute(
+                """
+                SELECT id
+                FROM students
+                WHERE id = ?
+                  AND COALESCE(is_active, 1) = 1
+                LIMIT 1
+                """,
+                (student_id,),
+            ).fetchone()
+            if student is None:
+                return {"success": False, "message": "학생을 찾을 수 없습니다.", "deleted": False}
+
+            attendance_count = connection.execute(
+                "SELECT COUNT(*) AS count FROM attendance WHERE student_id = ?",
+                (student_id,),
+            ).fetchone()["count"]
+
+            if int(attendance_count or 0) > 0:
+                connection.execute("UPDATE students SET is_active = 0 WHERE id = ?", (student_id,))
+                connection.execute("DELETE FROM subject_students WHERE student_id = ?", (student_id,))
+                connection.commit()
+                return {"success": True, "message": "학생이 비활성화되었습니다.", "deleted": False}
+
+            connection.execute("DELETE FROM subject_students WHERE student_id = ?", (student_id,))
+            connection.execute("DELETE FROM students WHERE id = ?", (student_id,))
+            connection.commit()
+
+        return {"success": True, "message": "학생이 삭제되었습니다.", "deleted": True}
+
+    except sqlite3.Error as error:
+        return {"success": False, "message": f"학생 삭제 중 데이터베이스 오류가 발생했습니다: {error}", "deleted": False}

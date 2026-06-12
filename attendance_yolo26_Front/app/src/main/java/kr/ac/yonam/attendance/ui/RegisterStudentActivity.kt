@@ -14,6 +14,8 @@ import androidx.camera.core.Preview
 import androidx.camera.lifecycle.ProcessCameraProvider
 import androidx.core.content.ContextCompat
 import androidx.lifecycle.lifecycleScope
+import androidx.recyclerview.widget.LinearLayoutManager
+import com.google.android.material.dialog.MaterialAlertDialogBuilder
 import kotlinx.coroutines.Job
 import kotlinx.coroutines.delay
 import kotlinx.coroutines.launch
@@ -23,6 +25,7 @@ import kr.ac.yonam.attendance.model.EnrollCompleteResponse
 import kr.ac.yonam.attendance.model.EnrollFrameResponse
 import kr.ac.yonam.attendance.model.EnrollStartResponse
 import kr.ac.yonam.attendance.model.EnrollStatusResponse
+import kr.ac.yonam.attendance.model.Student
 import kr.ac.yonam.attendance.repository.AttendanceRepository
 import kr.ac.yonam.attendance.util.ImageUtil
 import kr.ac.yonam.attendance.util.ServerConfig
@@ -33,6 +36,7 @@ class RegisterStudentActivity : AppCompatActivity() {
     private lateinit var binding: ActivityRegisterStudentBinding
     private lateinit var repository: AttendanceRepository
     private lateinit var cameraExecutor: ExecutorService
+    private lateinit var registeredStudentAdapter: RegisteredStudentAdapter
 
     private enum class EnrollUiState {
         INPUT_INFO,
@@ -64,6 +68,7 @@ class RegisterStudentActivity : AppCompatActivity() {
     private var isScreenDestroyed = false
 
     private var uiState: EnrollUiState = EnrollUiState.INPUT_INFO
+    private var selectedStudent: Student? = null
     private var nextCaptureAtMillis = 0L
     private var lastOverlayStatus: String? = null
     private var lastOverlayMessage: String? = null
@@ -100,10 +105,16 @@ class RegisterStudentActivity : AppCompatActivity() {
 
         repository = AttendanceRepository(serverUrl)
         cameraExecutor = Executors.newSingleThreadExecutor()
+        registeredStudentAdapter = RegisteredStudentAdapter { student ->
+            showStudentActionDialog(student)
+        }
+        binding.recyclerRegisteredStudents.layoutManager = LinearLayoutManager(this)
+        binding.recyclerRegisteredStudents.adapter = registeredStudentAdapter
 
         bindActions()
         setupBackHandler()
         enterInputInfo()
+        loadRegisteredStudents()
     }
 
     override fun onStart() {
@@ -172,6 +183,93 @@ class RegisterStudentActivity : AppCompatActivity() {
         setOverlayState("enroll_waiting", "정면을 바라보세요", "진행률 0%")
         setFormEnabled(true)
         setLoading(false)
+    }
+
+    private fun loadRegisteredStudents() {
+        binding.textRegisteredStudentsMessage.text = "학생 목록을 불러오는 중입니다."
+        binding.textRegisteredStudentsMessage.visibility = View.VISIBLE
+        lifecycleScope.launch {
+            val response = repository.getStudents()
+            if (response.success == true) {
+                val students = response.items.orEmpty()
+                registeredStudentAdapter.submitList(students)
+                binding.textRegisteredStudentsMessage.text = if (students.isEmpty()) {
+                    "등록된 학생이 없습니다."
+                } else {
+                    "학생을 선택하면 얼굴 재등록 또는 삭제를 진행할 수 있습니다."
+                }
+            } else {
+                registeredStudentAdapter.submitList(emptyList())
+                binding.textRegisteredStudentsMessage.text =
+                    response.message ?: "학생 목록을 불러오지 못했습니다."
+            }
+        }
+    }
+
+    private fun showStudentActionDialog(student: Student) {
+        if (enrollId != null || uiState == EnrollUiState.CAPTURING || uiState == EnrollUiState.COMPLETING) {
+            showMessage("얼굴 등록이 진행 중입니다. 완료 또는 취소 후 다시 선택해 주세요.", isError = true)
+            return
+        }
+
+        MaterialAlertDialogBuilder(this)
+            .setTitle(student.name ?: "학생 선택")
+            .setItems(arrayOf("얼굴 재등록", "삭제")) { _, which ->
+                when (which) {
+                    0 -> selectRegisteredStudent(student)
+                    1 -> confirmDeleteStudent(student)
+                }
+            }
+            .show()
+    }
+
+    private fun selectRegisteredStudent(student: Student) {
+        selectedStudent = student
+        binding.editStudentNo.setText(student.studentNo.orEmpty())
+        binding.editName.setText(student.name.orEmpty())
+        binding.editDepartment.setText(student.department.orEmpty())
+        binding.buttonStartEnrollment.text = "얼굴 재등록 시작"
+        showMessage("${student.name ?: "선택한 학생"} 얼굴을 재등록합니다.", isError = false)
+    }
+
+    private fun confirmDeleteStudent(student: Student) {
+        val studentId = student.studentId
+        if (studentId == null) {
+            showMessage("학생 ID가 없어 삭제할 수 없습니다.", isError = true)
+            return
+        }
+
+        MaterialAlertDialogBuilder(this)
+            .setTitle("학생 삭제")
+            .setMessage("${student.name ?: "선택한 학생"} 학생을 삭제하시겠습니까?")
+            .setNegativeButton("취소", null)
+            .setPositiveButton("삭제") { _, _ ->
+                deleteStudent(studentId)
+            }
+            .show()
+    }
+
+    private fun deleteStudent(studentId: Int) {
+        setLoading(true)
+        lifecycleScope.launch {
+            val response = repository.deleteStudent(studentId)
+            setLoading(false)
+            if (response.success == true || response.deleted == true) {
+                resetStudentForm()
+                loadRegisteredStudents()
+                showMessage(response.message ?: "학생을 삭제했습니다.", isError = false)
+            } else {
+                showMessage(response.message ?: "학생을 삭제하지 못했습니다.", isError = true)
+            }
+        }
+    }
+
+    private fun resetStudentForm() {
+        selectedStudent = null
+        binding.editStudentNo.text?.clear()
+        binding.editName.text?.clear()
+        binding.editDepartment.text?.clear()
+        binding.buttonStartEnrollment.text = "등록 시작"
     }
 
     private fun startEnrollment() {
@@ -507,7 +605,10 @@ class RegisterStudentActivity : AppCompatActivity() {
         binding.buttonRetake.isEnabled = false
         setOverlayState("completed", "학생 등록 완료", null, force = true)
         showMessage(response.message ?: "학생 등록 완료", isError = false)
-        finishAfterComplete()
+        loadRegisteredStudents()
+        setFormEnabled(true)
+        binding.buttonStartEnrollment.text = "등록 시작"
+        selectedStudent = null
     }
 
     private fun refreshEnrollmentStatus() {

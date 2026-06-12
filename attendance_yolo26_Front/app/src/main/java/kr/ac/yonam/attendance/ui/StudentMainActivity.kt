@@ -6,6 +6,8 @@ import android.view.View
 import androidx.appcompat.app.AppCompatActivity
 import androidx.core.content.ContextCompat
 import androidx.lifecycle.lifecycleScope
+import kotlinx.coroutines.Job
+import kotlinx.coroutines.delay
 import kotlinx.coroutines.launch
 import kr.ac.yonam.attendance.R
 import kr.ac.yonam.attendance.databinding.ActivityStudentMainBinding
@@ -16,6 +18,8 @@ import kr.ac.yonam.attendance.util.ServerConfig
 
 class StudentMainActivity : AppCompatActivity() {
     private lateinit var binding: ActivityStudentMainBinding
+    private var currentSessionId: Int? = null
+    private var currentSessionRefreshJob: Job? = null
 
     private val serverUrl: String by lazy {
         ServerConfig.normalizeBaseUrl(
@@ -29,14 +33,32 @@ class StudentMainActivity : AppCompatActivity() {
         setContentView(binding.root)
 
         bindActions()
-        loadCurrentSession()
+        updateStartAttendanceEnabled(isLoading = true)
+    }
+
+    override fun onResume() {
+        super.onResume()
+        startCurrentSessionAutoRefresh()
+    }
+
+    override fun onPause() {
+        currentSessionRefreshJob?.cancel()
+        currentSessionRefreshJob = null
+        super.onPause()
     }
 
     private fun bindActions() {
         binding.buttonStartAttendance.setOnClickListener {
+            val sessionId = currentSessionId
+            if (sessionId == null) {
+                showEmptySession()
+                return@setOnClickListener
+            }
+
             startActivity(
                 Intent(this, AttendanceCameraActivity::class.java)
                     .putExtra(AttendanceCameraActivity.EXTRA_SERVER_URL, serverUrl)
+                    .putExtra(AttendanceCameraActivity.EXTRA_SESSION_ID, sessionId)
             )
         }
 
@@ -45,37 +67,58 @@ class StudentMainActivity : AppCompatActivity() {
         }
     }
 
-    private fun loadCurrentSession() {
+    private fun startCurrentSessionAutoRefresh() {
+        currentSessionRefreshJob?.cancel()
+        currentSessionRefreshJob = lifecycleScope.launch {
+            var showLoading = true
+            while (true) {
+                fetchAndRenderCurrentSession(showLoading = showLoading)
+                showLoading = false
+                delay(CURRENT_SESSION_REFRESH_INTERVAL_MILLIS)
+            }
+        }
+    }
+
+    private suspend fun fetchAndRenderCurrentSession(showLoading: Boolean) {
         val classroomId = ClassroomConfig.getSelectedClassroomId(this)
         if (classroomId == null) {
             showClassroomRequired()
-            openClassroomSelect()
+            if (showLoading) {
+                openClassroomSelect()
+            }
             return
         }
 
-        setLoading(true)
-        showSessionLoading()
+        if (showLoading) {
+            setLoading(true)
+            showSessionLoading()
+        }
 
-        lifecycleScope.launch {
-            try {
-                val repository = AttendanceRepository(serverUrl)
-                val response = repository.getCurrentSession(classroomId)
-                if (response.success == true && response.session != null) {
-                    showSession(response.session)
-                } else if (response.status == "no_current_session" || response.success == true) {
-                    showEmptySession()
-                } else {
-                    showLoadFailed()
-                }
-            } catch (error: Exception) {
-                showLoadFailed()
-            } finally {
+        try {
+            val repository = AttendanceRepository(serverUrl)
+            val response = repository.getCurrentSession(classroomId)
+            val session = response.session
+            if (response.success == true && session?.resolvedSessionId != null) {
+                showSession(session)
+            } else if (response.success == true && session != null) {
+                showLoadFailed("현재 수업 응답에 session_id가 없습니다.")
+            } else if (response.status == "no_current_session" || response.success == true) {
+                showEmptySession()
+            } else {
+                showLoadFailed(response.message)
+            }
+        } catch (error: Exception) {
+            showLoadFailed(error.message)
+        } finally {
+            if (showLoading) {
                 setLoading(false)
             }
         }
     }
 
     private fun showSessionLoading() {
+        currentSessionId = null
+        updateStartAttendanceEnabled(isLoading = true)
         binding.textSubjectName.text = getString(R.string.loading)
         binding.textClassroom.text = ClassroomConfig.getSelectedClassroomName(this) ?: "-"
         binding.textClassDate.text = "-"
@@ -87,6 +130,7 @@ class StudentMainActivity : AppCompatActivity() {
     }
 
     private fun showSession(session: Session) {
+        currentSessionId = session.resolvedSessionId
         binding.textSubjectName.text = session.subjectName ?: "-"
         binding.textClassroom.text = session.classroomDisplayName()
         binding.textClassDate.text = session.classDate ?: "-"
@@ -101,9 +145,11 @@ class StudentMainActivity : AppCompatActivity() {
             color(if (session.isActive == true) R.color.yonam_green else R.color.text_secondary)
         )
         binding.textSessionMessage.visibility = View.GONE
+        updateStartAttendanceEnabled(isLoading = false)
     }
 
     private fun showEmptySession() {
+        currentSessionId = null
         binding.textSubjectName.text = "-"
         binding.textClassroom.text = ClassroomConfig.getSelectedClassroomName(this) ?: "-"
         binding.textClassDate.text = "-"
@@ -114,9 +160,11 @@ class StudentMainActivity : AppCompatActivity() {
         binding.textSessionMessage.text = getString(R.string.current_classroom_session_empty)
         binding.textSessionMessage.setTextColor(color(R.color.text_secondary))
         binding.textSessionMessage.visibility = View.VISIBLE
+        updateStartAttendanceEnabled(isLoading = false)
     }
 
-    private fun showLoadFailed() {
+    private fun showLoadFailed(message: String? = null) {
+        currentSessionId = null
         binding.textSubjectName.text = "-"
         binding.textClassroom.text = ClassroomConfig.getSelectedClassroomName(this) ?: "-"
         binding.textClassDate.text = "-"
@@ -124,12 +172,15 @@ class StudentMainActivity : AppCompatActivity() {
         binding.textEndTime.text = "-"
         binding.textActiveStatus.text = getString(R.string.session_inactive)
         binding.textActiveStatus.setTextColor(color(R.color.yonam_red))
-        binding.textSessionMessage.text = getString(R.string.student_session_load_failed)
+        binding.textSessionMessage.text = message?.takeIf { it.isNotBlank() }
+            ?: getString(R.string.student_session_load_failed)
         binding.textSessionMessage.setTextColor(color(R.color.yonam_red))
         binding.textSessionMessage.visibility = View.VISIBLE
+        updateStartAttendanceEnabled(isLoading = false)
     }
 
     private fun showClassroomRequired() {
+        currentSessionId = null
         binding.textSubjectName.text = "-"
         binding.textClassroom.text = "-"
         binding.textClassDate.text = "-"
@@ -140,6 +191,7 @@ class StudentMainActivity : AppCompatActivity() {
         binding.textSessionMessage.text = getString(R.string.classroom_select_required)
         binding.textSessionMessage.setTextColor(color(R.color.yonam_red))
         binding.textSessionMessage.visibility = View.VISIBLE
+        updateStartAttendanceEnabled(isLoading = false)
     }
 
     private fun openClassroomSelect() {
@@ -155,8 +207,12 @@ class StudentMainActivity : AppCompatActivity() {
 
     private fun setLoading(isLoading: Boolean) {
         binding.progressLoading.visibility = if (isLoading) View.VISIBLE else View.GONE
-        binding.buttonStartAttendance.isEnabled = !isLoading
+        updateStartAttendanceEnabled(isLoading)
         binding.buttonBackToRoleSelect.isEnabled = !isLoading
+    }
+
+    private fun updateStartAttendanceEnabled(isLoading: Boolean = false) {
+        binding.buttonStartAttendance.isEnabled = !isLoading
     }
 
     private fun color(colorResId: Int): Int {
@@ -165,5 +221,6 @@ class StudentMainActivity : AppCompatActivity() {
 
     companion object {
         const val EXTRA_SERVER_URL = "extra_server_url"
+        private const val CURRENT_SESSION_REFRESH_INTERVAL_MILLIS = 30_000L
     }
 }

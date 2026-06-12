@@ -5,6 +5,7 @@ import com.google.gson.annotations.SerializedName
 data class Session(
     @SerializedName("session_id")
     val sessionId: Int? = null,
+    val id: Int? = null,
     @SerializedName("subject_id")
     val subjectId: Int? = null,
     @SerializedName("subject_name")
@@ -22,7 +23,10 @@ data class Session(
     val endTime: String? = null,
     @SerializedName("is_active")
     val isActive: Boolean? = null
-)
+) {
+    val resolvedSessionId: Int?
+        get() = sessionId ?: id
+}
 
 data class ActiveSessionResponse(
     val success: Boolean? = null,

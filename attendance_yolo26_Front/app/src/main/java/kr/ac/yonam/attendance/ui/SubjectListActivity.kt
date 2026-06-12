@@ -16,6 +16,7 @@ import kr.ac.yonam.attendance.util.ServerConfig
 class SubjectListActivity : AppCompatActivity() {
     private lateinit var binding: ActivitySubjectListBinding
     private lateinit var adapter: SubjectAdapter
+    private var hasLoadedOnce = false
 
     private val serverUrl: String by lazy {
         ServerConfig.normalizeBaseUrl(intent.getStringExtra(EXTRA_SERVER_URL))
@@ -51,6 +52,13 @@ class SubjectListActivity : AppCompatActivity() {
         loadSubjects()
     }
 
+    override fun onResume() {
+        super.onResume()
+        if (hasLoadedOnce) {
+            loadSubjects()
+        }
+    }
+
     private fun loadSubjects() {
         setLoading(true)
         binding.textError.visibility = View.GONE
@@ -64,6 +72,7 @@ class SubjectListActivity : AppCompatActivity() {
                 showError(response.message ?: getString(R.string.subject_list_load_failed))
                 showSubjects(emptyList())
             }
+            hasLoadedOnce = true
             setLoading(false)
         }
     }
