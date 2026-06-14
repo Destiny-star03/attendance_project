@@ -2,9 +2,10 @@
 
 import argparse
 import sqlite3
-from datetime import datetime
+from datetime import datetime, timedelta
 from typing import Any
 
+from config import CURRENT_SESSION_EARLY_MINUTES
 from modules.database import get_connection, init_db
 
 
@@ -37,6 +38,12 @@ def _current_time_hhmm() -> str:
     return datetime.now().time().isoformat(timespec="minutes")
 
 
+def _current_session_start_cutoff_hhmm() -> str:
+    return (datetime.now() + timedelta(minutes=CURRENT_SESSION_EARLY_MINUTES)).time().isoformat(
+        timespec="minutes"
+    )
+
+
 def _now_text() -> str:
     return datetime.now().isoformat(timespec="seconds")
 
@@ -49,9 +56,10 @@ def _row_is_current_by_time(row: sqlite3.Row) -> bool:
         return False
 
     current_time = _current_time_hhmm()
+    start_cutoff_time = _current_session_start_cutoff_hhmm()
     return (
         str(class_date) == _today()
-        and str(start_time)[:5] <= current_time
+        and str(start_time)[:5] <= start_cutoff_time
         and str(end_time)[:5] >= current_time
     )
 
@@ -302,6 +310,7 @@ def get_current_session_by_classroom(
         init_db(verbose=False)
         today = _today()
         current_time = _current_time_hhmm()
+        start_cutoff_time = _current_session_start_cutoff_hhmm()
 
         with get_connection() as connection:
             row = connection.execute(
@@ -349,7 +358,7 @@ def get_current_session_by_classroom(
                 """,
                 (
                     today,
-                    current_time,
+                    start_cutoff_time,
                     current_time,
                     classroom_id,
                     classroom_id,
@@ -398,7 +407,7 @@ def get_current_session_by_classroom(
                     LIMIT 1
                     """,
                     (
-                        current_time,
+                        start_cutoff_time,
                         current_time,
                         _today_day_of_week(),
                         classroom_id,
@@ -1191,7 +1200,7 @@ def update_session_attendance_status(
             if existing is None:
                 cursor = connection.execute(
                     """
-                    INSERT INTO attendance (
+                    INSERT OR IGNORE INTO attendance (
                         session_id,
                         student_id,
                         attendance_date,
@@ -1230,6 +1239,95 @@ def update_session_attendance_status(
             "success": False,
             "status": "server_error",
             "message": f"출석 상태 변경 중 데이터베이스 오류가 발생했습니다: {error}",
+        }
+
+
+def finalize_absences_for_finished_sessions() -> dict[str, Any]:
+    """Mark enrolled students without attendance rows as absent for finished sessions."""
+    try:
+        init_db(verbose=False)
+        today = _today()
+        current_time = _current_time_hhmm()
+        sessions_processed = 0
+        absences_created = 0
+
+        with get_connection() as connection:
+            rows = connection.execute(
+                """
+                SELECT id, subject_id, class_date, end_time
+                FROM attendance_sessions
+                WHERE subject_id IS NOT NULL
+                  AND class_date IS NOT NULL
+                  AND end_time IS NOT NULL
+                  AND (
+                    class_date < ?
+                    OR (class_date = ? AND substr(end_time, 1, 5) < ?)
+                  )
+                """,
+                (today, today, current_time),
+            ).fetchall()
+
+            for row in rows:
+                session_id = int(row["id"])
+                subject_id = int(row["subject_id"])
+                class_date = str(row["class_date"])
+                end_time = str(row["end_time"] or "")
+                attendance_time = f"{end_time[:5]}:00" if len(end_time) >= 5 else current_time
+
+                cursor = connection.execute(
+                    """
+                    INSERT INTO attendance (
+                        session_id,
+                        student_id,
+                        attendance_date,
+                        attendance_time,
+                        status
+                    )
+                    SELECT
+                        ?,
+                        students.id,
+                        ?,
+                        ?,
+                        ?
+                    FROM subject_students
+                    JOIN students ON students.id = subject_students.student_id
+                    WHERE subject_students.subject_id = ?
+                      AND COALESCE(students.is_active, 1) = 1
+                      AND NOT EXISTS (
+                        SELECT 1
+                        FROM attendance
+                        WHERE attendance.session_id = ?
+                          AND attendance.student_id = students.id
+                      )
+                    """,
+                    (
+                        session_id,
+                        class_date,
+                        attendance_time,
+                        ATTENDANCE_STATUS_ABSENT,
+                        subject_id,
+                        session_id,
+                    ),
+                )
+                sessions_processed += 1
+                absences_created += max(cursor.rowcount, 0)
+
+            connection.commit()
+
+        return {
+            "success": True,
+            "message": "종료된 세션의 미출석 학생 결석 처리가 완료되었습니다.",
+            "sessions_processed": sessions_processed,
+            "absences_created": absences_created,
+        }
+
+    except sqlite3.Error as error:
+        return {
+            "success": False,
+            "status": "server_error",
+            "message": f"자동 결석 처리 중 데이터베이스 오류가 발생했습니다: {error}",
+            "sessions_processed": 0,
+            "absences_created": 0,
         }
 
 

@@ -4,6 +4,7 @@ import android.app.Dialog
 import android.os.Bundle
 import android.view.View
 import android.widget.ArrayAdapter
+import android.widget.ListView
 import androidx.fragment.app.DialogFragment
 import androidx.lifecycle.lifecycleScope
 import com.google.android.material.dialog.MaterialAlertDialogBuilder
@@ -20,13 +21,13 @@ class AddStudentToSubjectDialog : DialogFragment() {
         get() = requireNotNull(_binding)
 
     private var students: List<Student> = emptyList()
-    private var selectedStudent: Student? = null
+    private val selectedStudentIds = linkedSetOf<Int>()
 
     override fun onCreateDialog(savedInstanceState: Bundle?): Dialog {
         _binding = DialogAddStudentToSubjectBinding.inflate(layoutInflater)
 
         binding.buttonAdd.setOnClickListener {
-            addSelectedStudent()
+            addSelectedStudents()
         }
         binding.buttonCancel.setOnClickListener {
             dismiss()
@@ -53,21 +54,40 @@ class AddStudentToSubjectDialog : DialogFragment() {
         binding.textMessage.visibility = View.GONE
 
         lifecycleScope.launch {
-            val response = AttendanceRepository(serverUrl()).getStudents()
-            if (response.success == true) {
-                students = response.items.orEmpty()
+            val repository = AttendanceRepository(serverUrl())
+            val studentsResponse = repository.getStudents()
+            val subjectStudentsResponse = repository.getSubjectStudents(subjectId())
+
+            if (studentsResponse.success == true) {
+                val enrolledIds = subjectStudentsResponse.items
+                    .orEmpty()
+                    .mapNotNull { it.studentId }
+                    .toSet()
+                students = studentsResponse.items
+                    .orEmpty()
+                    .filter { student ->
+                        val studentId = student.studentId
+                        studentId != null && studentId !in enrolledIds
+                    }
                 showStudents(students)
+
+                if (subjectStudentsResponse.success != true) {
+                    showMessage(
+                        subjectStudentsResponse.message ?: getString(R.string.subject_students_load_failed),
+                        isError = true
+                    )
+                }
             } else {
                 students = emptyList()
                 showStudents(students)
-                showMessage(response.message ?: getString(R.string.students_load_failed), isError = true)
+                showMessage(studentsResponse.message ?: getString(R.string.students_load_failed), isError = true)
             }
             setLoading(false)
         }
     }
 
     private fun showStudents(items: List<Student>) {
-        selectedStudent = null
+        selectedStudentIds.clear()
         binding.buttonAdd.isEnabled = false
         binding.textEmpty.visibility = if (items.isEmpty()) View.VISIBLE else View.GONE
 
@@ -81,34 +101,65 @@ class AddStudentToSubjectDialog : DialogFragment() {
         }
         binding.listStudents.adapter = ArrayAdapter(
             requireContext(),
-            android.R.layout.simple_list_item_single_choice,
+            android.R.layout.simple_list_item_multiple_choice,
             labels
         )
-        binding.listStudents.choiceMode = android.widget.ListView.CHOICE_MODE_SINGLE
+        binding.listStudents.choiceMode = ListView.CHOICE_MODE_MULTIPLE
+        binding.listStudents.clearChoices()
         binding.listStudents.setOnItemClickListener { _, _, position, _ ->
-            selectedStudent = students.getOrNull(position)
-            binding.buttonAdd.isEnabled = selectedStudent != null
+            val studentId = students.getOrNull(position)?.studentId ?: return@setOnItemClickListener
+            if (binding.listStudents.isItemChecked(position)) {
+                selectedStudentIds.add(studentId)
+            } else {
+                selectedStudentIds.remove(studentId)
+            }
+            binding.buttonAdd.isEnabled = selectedStudentIds.isNotEmpty()
         }
     }
 
-    private fun addSelectedStudent() {
-        val studentId = selectedStudent?.studentId
-        if (studentId == null) {
+    private fun addSelectedStudents() {
+        val ids = selectedStudentIds.toList()
+        if (ids.isEmpty()) {
             showMessage(getString(R.string.student_select_required), isError = true)
             return
         }
 
         setLoading(true)
         lifecycleScope.launch {
-            val response = AttendanceRepository(serverUrl()).addStudentToSubject(subjectId(), studentId)
-            if (response.success == true) {
+            val repository = AttendanceRepository(serverUrl())
+            var successCount = 0
+            val failedMessages = mutableListOf<String>()
+
+            ids.forEach { studentId ->
+                val response = repository.addStudentToSubject(subjectId(), studentId)
+                if (response.success == true) {
+                    successCount += 1
+                } else {
+                    failedMessages.add(response.message ?: getString(R.string.add_student_failed))
+                }
+            }
+
+            if (successCount > 0 && failedMessages.isEmpty()) {
                 parentFragmentManager.setFragmentResult(
                     REQUEST_KEY,
                     Bundle().apply { putBoolean(KEY_ADDED, true) }
                 )
                 dismiss()
+            } else if (successCount > 0) {
+                parentFragmentManager.setFragmentResult(
+                    REQUEST_KEY,
+                    Bundle().apply { putBoolean(KEY_ADDED, true) }
+                )
+                showMessage(
+                    "${successCount}명 추가 완료, ${failedMessages.size}명 추가 실패\n${failedMessages.first()}",
+                    isError = true
+                )
+                loadStudents()
             } else {
-                showMessage(response.message ?: getString(R.string.add_student_failed), isError = true)
+                showMessage(
+                    failedMessages.firstOrNull() ?: getString(R.string.add_student_failed),
+                    isError = true
+                )
                 setLoading(false)
             }
         }
@@ -118,7 +169,7 @@ class AddStudentToSubjectDialog : DialogFragment() {
         binding.progressLoading.visibility = if (isLoading) View.VISIBLE else View.GONE
         binding.listStudents.isEnabled = !isLoading
         binding.buttonCancel.isEnabled = !isLoading
-        binding.buttonAdd.isEnabled = !isLoading && selectedStudent != null
+        binding.buttonAdd.isEnabled = !isLoading && selectedStudentIds.isNotEmpty()
     }
 
     private fun showMessage(message: String, isError: Boolean) {

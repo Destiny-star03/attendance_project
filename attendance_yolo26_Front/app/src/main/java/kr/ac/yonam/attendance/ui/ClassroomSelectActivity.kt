@@ -18,6 +18,8 @@ import kr.ac.yonam.attendance.util.ServerConfig
 class ClassroomSelectActivity : AppCompatActivity() {
     private lateinit var binding: ActivityClassroomSelectBinding
     private lateinit var adapter: ClassroomAdapter
+    private var currentClassrooms: List<Classroom> = emptyList()
+    private var hasLoadedClassrooms: Boolean = false
 
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
@@ -38,7 +40,11 @@ class ClassroomSelectActivity : AppCompatActivity() {
 
     override fun onResume() {
         super.onResume()
-        updateSelectedClassroom()
+        if (hasLoadedClassrooms) {
+            updateSelectionState()
+        } else {
+            updateSelectedClassroom()
+        }
     }
 
     private fun loadClassrooms() {
@@ -53,11 +59,14 @@ class ClassroomSelectActivity : AppCompatActivity() {
 
             if (response.success == true) {
                 val classrooms = response.items.orEmpty()
+                currentClassrooms = classrooms
+                hasLoadedClassrooms = true
                 val selectedId = validatedSelectedClassroomId(classrooms)
                 adapter.submitList(classrooms, selectedId)
                 binding.textEmpty.visibility = if (classrooms.isEmpty()) View.VISIBLE else View.GONE
                 binding.buttonEmptyAdmin.visibility = if (classrooms.isEmpty()) View.VISIBLE else View.GONE
             } else {
+                hasLoadedClassrooms = false
                 adapter.submitList(emptyList(), ClassroomConfig.getSelectedClassroomId(this@ClassroomSelectActivity))
                 binding.textEmpty.visibility = View.VISIBLE
                 binding.buttonEmptyAdmin.visibility = View.VISIBLE
@@ -78,6 +87,8 @@ class ClassroomSelectActivity : AppCompatActivity() {
         }
 
         ClassroomConfig.saveSelectedClassroom(this, classroom)
+        adapter.updateSelectedClassroom(classroom.resolvedClassroomId)
+        updateSelectedClassroom()
         startActivity(
             Intent(this, RoleSelectActivity::class.java)
                 .addFlags(Intent.FLAG_ACTIVITY_CLEAR_TOP or Intent.FLAG_ACTIVITY_SINGLE_TOP)
@@ -98,6 +109,11 @@ class ClassroomSelectActivity : AppCompatActivity() {
         } else {
             getString(R.string.classroom_selected_format, selectedName)
         }
+    }
+
+    private fun updateSelectionState() {
+        val selectedId = validatedSelectedClassroomId(currentClassrooms)
+        adapter.updateSelectedClassroom(selectedId)
     }
 
     private fun validatedSelectedClassroomId(classrooms: List<Classroom>): Int? {

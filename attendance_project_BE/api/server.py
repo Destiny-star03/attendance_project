@@ -1,6 +1,9 @@
 ﻿from __future__ import annotations
 
 import csv
+import asyncio
+import contextlib
+import json
 from datetime import datetime
 from pathlib import Path
 from typing import Any
@@ -11,9 +14,15 @@ from fastapi.responses import FileResponse
 from pydantic import BaseModel
 
 from config import (
+    ABSENCE_FINALIZER_INTERVAL_SECONDS,
     ALLOW_UPDATE_EXISTING_STUDENT_FACE,
+    ATTENDANCE_FACE_CROP_PADDING_RATIO,
+    ATTENDANCE_FACE_DETECTION_CONFIDENCE,
     ATTENDANCE_HOLD_SECONDS,
+    ENROLL_FACE_CROP_PADDING_RATIO,
+    ENROLL_FACE_DETECTION_CONFIDENCE,
     EXPORT_DIR,
+    LOG_DIR,
     TRACKER_TIMEOUT_SECONDS,
     ensure_directories,
 )
@@ -22,6 +31,7 @@ from modules.attendance_service import (
     close_session,
     create_attendance_session,
     delete_session,
+    finalize_absences_for_finished_sessions,
     get_active_session,
     get_attendance_records,
     get_current_session_by_classroom,
@@ -136,6 +146,37 @@ recognition_tracker = AttendanceRecognitionTracker(
 )
 student_registration_tracker = StudentRegistrationTracker()
 enrollment_service = EnrollmentService()
+_absence_finalizer_task: asyncio.Task | None = None
+
+
+async def _absence_finalizer_loop() -> None:
+    while True:
+        try:
+            result = finalize_absences_for_finished_sessions()
+            if not result.get("success"):
+                print(result.get("message", "자동 결석 처리에 실패했습니다."))
+        except Exception as error:
+            print(f"자동 결석 처리 중 예외가 발생했습니다: {error}")
+        await asyncio.sleep(ABSENCE_FINALIZER_INTERVAL_SECONDS)
+
+
+@app.on_event("startup")
+async def _start_absence_finalizer() -> None:
+    global _absence_finalizer_task
+    if _absence_finalizer_task is None or _absence_finalizer_task.done():
+        _absence_finalizer_task = asyncio.create_task(_absence_finalizer_loop())
+
+
+@app.on_event("shutdown")
+async def _stop_absence_finalizer() -> None:
+    global _absence_finalizer_task
+    if _absence_finalizer_task is None:
+        return
+
+    _absence_finalizer_task.cancel()
+    with contextlib.suppress(asyncio.CancelledError):
+        await _absence_finalizer_task
+    _absence_finalizer_task = None
 
 
 def _get_detector() -> FaceDetector:
@@ -335,6 +376,86 @@ def _face_failure_response(faces: list[dict[str, Any]] | None) -> dict[str, Any]
         "status": "no_face",
         "message": "얼굴을 찾지 못했습니다.",
     }
+
+
+def _face_debug_data(faces: list[dict[str, Any]] | None) -> dict[str, Any]:
+    if faces is None:
+        return {
+            "detect_face_count": None,
+            "detect_confidence": None,
+            "detection_status": "image_error",
+            "detector_source": "none",
+        }
+
+    face_count = len(faces)
+    confidence = None
+    if faces:
+        confidence = max(float(face.get("confidence", 0.0)) for face in faces)
+        sources = {str(face.get("detector_source") or "unknown") for face in faces}
+        detector_source = sources.pop() if len(sources) == 1 else "mixed"
+    else:
+        detector_source = "none"
+
+    if face_count == 0:
+        status = "no_face"
+    elif face_count >= 2:
+        status = "multiple_faces"
+    else:
+        status = "detected"
+
+    return {
+        "detect_face_count": face_count,
+        "detect_confidence": confidence,
+        "detection_status": status,
+        "detector_source": detector_source,
+    }
+
+
+def _recognition_debug_data(recognition: dict[str, Any] | None) -> dict[str, Any]:
+    if not recognition:
+        return {
+            "recognition_status": "not_run",
+            "matched": None,
+            "student_id": None,
+            "distance": None,
+            "second_distance": None,
+            "distance_margin": None,
+            "threshold": None,
+            "margin_threshold": None,
+        }
+
+    if recognition.get("ambiguous"):
+        status = "ambiguous_face"
+    elif recognition.get("matched"):
+        status = "matched"
+    else:
+        status = "unknown"
+
+    return {
+        "recognition_status": status,
+        "matched": bool(recognition.get("matched")),
+        "student_id": recognition.get("student_id"),
+        "distance": recognition.get("distance"),
+        "second_distance": recognition.get("second_distance"),
+        "distance_margin": recognition.get("distance_margin"),
+        "threshold": recognition.get("threshold"),
+        "margin_threshold": recognition.get("margin_threshold"),
+    }
+
+
+def _write_attendance_recognition_debug(event: dict[str, Any]) -> None:
+    try:
+        ensure_directories()
+        log_path = Path(LOG_DIR) / "attendance_recognition_debug.jsonl"
+        payload = {
+            "timestamp": datetime.now().isoformat(timespec="seconds"),
+            **event,
+        }
+        with log_path.open("a", encoding="utf-8") as log_file:
+            log_file.write(json.dumps(payload, ensure_ascii=False) + "\n")
+    except Exception as error:
+        print(f"출석 인식 디버그 로그 저장 실패: {error}")
+
 
 def _csv_file_name(session_id: int | None, date: str | None, session: dict[str, Any] | None) -> str:
     if session_id is not None:
@@ -663,7 +784,13 @@ async def add_student_registration_frame(
 ) -> dict[str, Any]:
     try:
         image_bytes = await _read_upload_image(image)
-        result = extract_single_face_from_bytes(image_bytes, _get_detector(), build_encoding=False)
+        result = extract_single_face_from_bytes(
+            image_bytes,
+            _get_detector(),
+            build_encoding=False,
+            confidence_threshold=ENROLL_FACE_DETECTION_CONFIDENCE,
+            padding_ratio=ENROLL_FACE_CROP_PADDING_RATIO,
+        )
 
         if not result.success or result.face_crop is None:
             failure = _face_failure_response(result.faces)
@@ -861,7 +988,13 @@ async def add_student_enrollment_frame(
 ) -> dict[str, Any]:
     try:
         image_bytes = await _read_upload_image(image)
-        result = extract_single_face_from_bytes(image_bytes, _get_detector(), build_encoding=False)
+        result = extract_single_face_from_bytes(
+            image_bytes,
+            _get_detector(),
+            build_encoding=False,
+            confidence_threshold=ENROLL_FACE_DETECTION_CONFIDENCE,
+            padding_ratio=ENROLL_FACE_CROP_PADDING_RATIO,
+        )
 
         if not result.success or result.face_crop is None:
             return _enroll_face_failure_response(result.faces, enroll_id=enroll_id, pose=pose)
@@ -1094,53 +1227,84 @@ async def recognize_attendance(
     image: UploadFile | None = File(None),
     session_id: int | None = Form(None),
 ) -> dict[str, Any]:
+    debug_event: dict[str, Any] = {
+        "session_id": session_id,
+        "image_bytes": None,
+        "detect_face_count": None,
+        "detect_confidence": None,
+        "detection_status": "not_run",
+        "detector_source": "none",
+        "recognition_status": "not_run",
+        "matched": None,
+        "student_id": None,
+        "distance": None,
+        "second_distance": None,
+        "distance_margin": None,
+        "threshold": None,
+        "margin_threshold": None,
+        "final_status": None,
+    }
+
+    def finish(response: dict[str, Any]) -> dict[str, Any]:
+        debug_event["final_status"] = response.get("status")
+        _write_attendance_recognition_debug(debug_event)
+        return response
+
     try:
         recognition_tracker.cleanup()
 
         image_bytes = await _read_upload_image(image)
-        face_result = extract_single_face_from_bytes(image_bytes, _get_detector())
+        debug_event["image_bytes"] = len(image_bytes)
+        face_result = extract_single_face_from_bytes(
+            image_bytes,
+            _get_detector(),
+            confidence_threshold=ATTENDANCE_FACE_DETECTION_CONFIDENCE,
+            padding_ratio=ATTENDANCE_FACE_CROP_PADDING_RATIO,
+        )
+        debug_event.update(_face_debug_data(face_result.faces))
 
         if not face_result.success or face_result.face_crop is None:
-            return _face_failure_response(face_result.faces)
+            return finish(_face_failure_response(face_result.faces))
 
         recognition = _get_recognizer().recognize(face_result.face_crop)
+        debug_event.update(_recognition_debug_data(recognition))
         recognition_data = _recognition_payload(recognition)
 
         if recognition.get("ambiguous"):
             recognition_tracker.reset()
-            return {
+            return finish({
                 "success": True,
                 "matched": False,
                 "status": "ambiguous_face",
                 "message": "얼굴 인식 결과가 명확하지 않습니다. 다시 시도해 주세요.",
                 "recognition": recognition_data,
-            }
+            })
 
         if not recognition["matched"]:
             recognition_tracker.reset()
-            return {
+            return finish({
                 "success": True,
                 "matched": False,
                 "status": "unknown",
                 "message": "미등록 사용자입니다.",
                 "recognition": recognition_data,
-            }
+            })
 
         student = get_student_by_id(recognition["student_id"])
         if student is None:
             recognition_tracker.reset()
-            return {
+            return finish({
                 "success": True,
                 "matched": False,
                 "status": "unknown",
                 "message": "미등록 사용자입니다.",
                 "recognition": recognition_data,
-            }
+            })
 
         session = _get_request_session(session_id)
         if session is None:
             recognition_tracker.reset()
-            return {
+            return finish({
                 "success": False,
                 "matched": True,
                 "status": "no_active_session",
@@ -1151,7 +1315,7 @@ async def recognize_attendance(
                     "marked": False,
                     "message": "출석 세션 없음",
                 },
-            }
+            })
 
         resolved_session_id = int(session["session_id"])
         session_data = _session_payload(session)
@@ -1161,7 +1325,7 @@ async def recognize_attendance(
 
         if subject_id is not None and not is_student_enrolled_in_subject(student_id, int(subject_id)):
             recognition_tracker.reset()
-            return {
+            return finish({
                 "success": False,
                 "matched": True,
                 "status": "not_enrolled",
@@ -1173,11 +1337,11 @@ async def recognize_attendance(
                     "marked": False,
                     "message": "수강생이 아님",
                 },
-            }
+            })
 
         if has_attended(student_id, resolved_session_id):
             recognition_tracker.mark_attended(student_id, session_id=resolved_session_id)
-            return {
+            return finish({
                 "success": True,
                 "matched": True,
                 "status": "already_attended",
@@ -1189,7 +1353,7 @@ async def recognize_attendance(
                     "marked": False,
                     "message": "이미 출석했습니다.",
                 },
-            }
+            })
 
         progress = recognition_tracker.update(
             session_id=resolved_session_id,
@@ -1197,7 +1361,7 @@ async def recognize_attendance(
         )
 
         if not progress["ready"]:
-            return {
+            return finish({
                 "success": True,
                 "matched": True,
                 "status": "recognizing",
@@ -1212,7 +1376,7 @@ async def recognize_attendance(
                     "marked": False,
                     "message": "아직 출석 처리되지 않았습니다.",
                 },
-            }
+            })
 
         face_confidence = None
         if face_result.face is not None:
@@ -1227,7 +1391,7 @@ async def recognize_attendance(
         recognition_tracker.mark_attended(student_id, session_id=resolved_session_id)
 
         if not attendance_result.get("success"):
-            return {
+            return finish({
                 "success": False,
                 "matched": True,
                 "status": "attendance_error",
@@ -1239,11 +1403,11 @@ async def recognize_attendance(
                     "marked": False,
                     "message": attendance_result.get("message", "출석 처리 오류"),
                 },
-            }
+            })
 
         attendance_message = attendance_result.get("message", "출석 완료")
         status = "already_attended" if attendance_message == "이미 출석했습니다." else "attended"
-        return {
+        return finish({
             "success": True,
             "matched": True,
             "status": status,
@@ -1258,26 +1422,26 @@ async def recognize_attendance(
                 "marked": status == "attended",
                 "message": attendance_message,
             },
-        }
+        })
 
     except FileNotFoundError:
-        return {
+        return finish({
             "success": False,
             "matched": False,
             "status": "model_error",
             "message": "YOLO26 얼굴 검출 모델 파일을 찾을 수 없습니다. 학습 결과 best.pt를 models/yolo26_face.pt로 배치해 주세요.",
-        }
+        })
     except RuntimeError as error:
-        return {"success": False, "matched": False, "status": "runtime_error", "message": str(error)}
+        return finish({"success": False, "matched": False, "status": "runtime_error", "message": str(error)})
     except ValueError as error:
-        return {"success": False, "matched": False, "status": "bad_request", "message": str(error)}
+        return finish({"success": False, "matched": False, "status": "bad_request", "message": str(error)})
     except Exception as error:
-        return {
+        return finish({
             "success": False,
             "matched": False,
             "status": "server_error",
             "message": f"출석 인식 중 오류가 발생했습니다: {error}",
-        }
+        })
 
 
 @app.get("/attendance/today")

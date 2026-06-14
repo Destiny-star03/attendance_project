@@ -207,7 +207,7 @@ class AttendanceCameraActivity : AppCompatActivity() {
         lastRequestAtMillis = now
 
         val jpegBytes = try {
-            ImageUtil.imageProxyToJpegBytes(imageProxy)
+            ImageUtil.imageProxyToJpegBytes(imageProxy, quality = 90)
         } catch (error: Exception) {
             null
         } finally {
@@ -677,7 +677,7 @@ class AttendanceCameraActivity : AppCompatActivity() {
     companion object {
         const val EXTRA_SERVER_URL = "extra_server_url"
         const val EXTRA_SESSION_ID = "extra_session_id"
-        private const val REQUEST_INTERVAL_MILLIS = 800L
+        private const val REQUEST_INTERVAL_MILLIS = 600L
         private const val NO_SESSION_MESSAGE_INTERVAL_MILLIS = 1000L
         private const val RESULT_HOLD_MILLIS = 2500L
         private const val CURRENT_SESSION_REFRESH_INTERVAL_MILLIS = 30_000L

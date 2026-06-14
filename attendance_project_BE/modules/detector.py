@@ -12,7 +12,7 @@ from config import FACE_DETECTION_CONFIDENCE, YOLO_MODEL_PATH
 
 
 class FaceDetector:
-    """YOLO-based face detector. It detects face boxes only."""
+    """YOLO-based face detector with an OpenCV Haar fallback."""
 
     def __init__(
         self,
@@ -31,23 +31,53 @@ class FaceDetector:
             raise FileNotFoundError(message)
 
         self.model = YOLO(str(self.model_path))
+        haar_path = Path(cv2.data.haarcascades) / "haarcascade_frontalface_default.xml"
+        self.haar_cascade = cv2.CascadeClassifier(str(haar_path))
 
-    def detect_faces(self, frame: np.ndarray) -> list[dict[str, Any]]:
+    def detect_faces(
+        self,
+        frame: np.ndarray,
+        *,
+        confidence_threshold: float | None = None,
+        use_haar_fallback: bool = True,
+    ) -> list[dict[str, Any]]:
         """
         Detect face boxes from an OpenCV BGR frame.
 
         Returns:
             [
-                {"box": [x1, y1, x2, y2], "confidence": 0.91, "class_id": 0}
+                {
+                    "box": [x1, y1, x2, y2],
+                    "confidence": 0.91,
+                    "class_id": 0,
+                    "detector_source": "yolo" | "haar",
+                }
             ]
         """
         if frame is None or frame.size == 0:
             return []
 
+        faces = self._detect_faces_yolo(frame, confidence_threshold=confidence_threshold)
+        if faces or not use_haar_fallback:
+            return faces
+
+        return self._detect_faces_haar(frame)
+
+    def _detect_faces_yolo(
+        self,
+        frame: np.ndarray,
+        *,
+        confidence_threshold: float | None = None,
+    ) -> list[dict[str, Any]]:
+        confidence = (
+            self.confidence_threshold
+            if confidence_threshold is None
+            else confidence_threshold
+        )
         height, width = frame.shape[:2]
         results = self.model.predict(
             source=frame,
-            conf=self.confidence_threshold,
+            conf=confidence,
             verbose=False,
         )
 
@@ -71,6 +101,40 @@ class FaceDetector:
                     "box": [x1, y1, x2, y2],
                     "confidence": confidence,
                     "class_id": class_id,
+                    "detector_source": "yolo",
+                }
+            )
+
+        return faces
+
+    def _detect_faces_haar(self, frame: np.ndarray) -> list[dict[str, Any]]:
+        if self.haar_cascade.empty():
+            return []
+
+        gray = cv2.cvtColor(frame, cv2.COLOR_BGR2GRAY)
+        detections = self.haar_cascade.detectMultiScale(
+            gray,
+            scaleFactor=1.1,
+            minNeighbors=4,
+            minSize=(40, 40),
+        )
+
+        height, width = frame.shape[:2]
+        faces: list[dict[str, Any]] = []
+        for x, y, w, h in detections:
+            x1 = max(0, min(int(x), width - 1))
+            y1 = max(0, min(int(y), height - 1))
+            x2 = max(0, min(int(x + w), width - 1))
+            y2 = max(0, min(int(y + h), height - 1))
+            if x2 <= x1 or y2 <= y1:
+                continue
+
+            faces.append(
+                {
+                    "box": [x1, y1, x2, y2],
+                    "confidence": 0.0,
+                    "class_id": 0,
+                    "detector_source": "haar",
                 }
             )
 
@@ -88,10 +152,11 @@ def _draw_faces(frame: np.ndarray, faces: list[dict[str, Any]]) -> np.ndarray:
     for face in faces:
         x1, y1, x2, y2 = face["box"]
         confidence = face["confidence"]
+        source = face.get("detector_source", "face")
         cv2.rectangle(output, (x1, y1), (x2, y2), (0, 255, 0), 2)
         cv2.putText(
             output,
-            f"face {confidence:.2f}",
+            f"{source} {confidence:.2f}",
             (x1, max(0, y1 - 10)),
             cv2.FONT_HERSHEY_SIMPLEX,
             0.6,
@@ -126,7 +191,10 @@ if __name__ == "__main__":
 
     print(f"검출된 얼굴 수: {len(detected_faces)}")
     for index, face in enumerate(detected_faces, start=1):
-        print(f"{index}. box={face['box']} confidence={face['confidence']:.4f}")
+        print(
+            f"{index}. source={face.get('detector_source')} "
+            f"box={face['box']} confidence={face['confidence']:.4f}"
+        )
 
     output_image = _draw_faces(image, detected_faces)
     cv2.imwrite(args.output, output_image)

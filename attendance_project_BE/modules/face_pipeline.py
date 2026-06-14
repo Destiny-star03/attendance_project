@@ -34,10 +34,26 @@ def decode_image_bytes(image_bytes: bytes) -> np.ndarray | None:
     return cv2.imdecode(array, cv2.IMREAD_COLOR)
 
 
-def crop_face(image: np.ndarray, box: list[int]) -> np.ndarray:
+def crop_face(
+    image: np.ndarray,
+    box: list[int],
+    *,
+    padding_ratio: float = 0.0,
+) -> np.ndarray:
     x1, y1, x2, y2 = box
     if x2 <= x1 or y2 <= y1:
         raise ValueError("얼굴 영역 좌표가 올바르지 않습니다.")
+
+    if padding_ratio > 0:
+        height, width = image.shape[:2]
+        box_width = x2 - x1
+        box_height = y2 - y1
+        pad_x = int(box_width * padding_ratio)
+        pad_y = int(box_height * padding_ratio)
+        x1 = max(0, x1 - pad_x)
+        y1 = max(0, y1 - pad_y)
+        x2 = min(width, x2 + pad_x)
+        y2 = min(height, y2 + pad_y)
 
     face_crop = image[y1:y2, x1:x2]
     if face_crop.size == 0:
@@ -51,11 +67,13 @@ def extract_single_face(
     detector: FaceDetector,
     *,
     build_encoding: bool = False,
+    confidence_threshold: float | None = None,
+    padding_ratio: float = 0.0,
 ) -> FacePipelineResult:
     if image is None or image.size == 0:
         return FacePipelineResult(success=False, message=IMAGE_DECODE_ERROR_MESSAGE)
 
-    faces = detector.detect_faces(image)
+    faces = detector.detect_faces(image, confidence_threshold=confidence_threshold)
 
     if len(faces) == 0:
         return FacePipelineResult(success=False, message=FACE_NOT_FOUND_MESSAGE, image=image, faces=faces)
@@ -64,7 +82,7 @@ def extract_single_face(
         return FacePipelineResult(success=False, message=MULTIPLE_FACES_MESSAGE, image=image, faces=faces)
 
     face = faces[0]
-    face_crop = crop_face(image, face["box"])
+    face_crop = crop_face(image, face["box"], padding_ratio=padding_ratio)
     face_encoding = encoding_to_bytes(extract_face_encoding(face_crop)) if build_encoding else None
 
     return FacePipelineResult(
@@ -83,6 +101,14 @@ def extract_single_face_from_bytes(
     detector: FaceDetector,
     *,
     build_encoding: bool = False,
+    confidence_threshold: float | None = None,
+    padding_ratio: float = 0.0,
 ) -> FacePipelineResult:
     image = decode_image_bytes(image_bytes)
-    return extract_single_face(image, detector, build_encoding=build_encoding)
+    return extract_single_face(
+        image,
+        detector,
+        build_encoding=build_encoding,
+        confidence_threshold=confidence_threshold,
+        padding_ratio=padding_ratio,
+    )

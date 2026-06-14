@@ -66,9 +66,12 @@ class FaceGuideOverlayView @JvmOverloads constructor(
         super.onDraw(canvas)
         if (width <= 0 || height <= 0) return
 
-        val radius = min(width, height) * 0.30f
+        val radius = min(width, height) * 0.42f
         val centerX = width / 2f
-        val centerY = height / 2f
+        val textReserveHeight = if (progressText != null) 130f else 92f
+        val centerY = (height / 2f)
+            .coerceAtMost(height - radius - textReserveHeight)
+            .coerceAtLeast(radius + 12f)
 
         drawDimmedOutsideGuide(canvas, centerX, centerY, radius)
 
@@ -94,7 +97,8 @@ class FaceGuideOverlayView @JvmOverloads constructor(
 
     private fun drawGuideText(canvas: Canvas, centerX: Float, circleBottom: Float) {
         val hasProgress = progressText != null
-        val messageY = (circleBottom + 58f).coerceAtMost(height - if (hasProgress) 82f else 42f)
+        val maxMessageY = height - if (hasProgress) 82f else 42f
+        val messageY = (circleBottom + 58f).coerceAtMost(maxMessageY)
         val progressY = messageY + 42f
         val backgroundHeight = if (hasProgress) 96f else 58f
 
@@ -125,6 +129,6 @@ class FaceGuideOverlayView @JvmOverloads constructor(
 
     companion object {
         private const val STATUS_IDLE = "idle"
-        private const val DEFAULT_MESSAGE = "얼굴을 원 안에 맞춰주세요"
+        private const val DEFAULT_MESSAGE = "얼굴을 원 안에 맞춰주세요."
     }
 }

@@ -20,6 +20,11 @@ class ClassroomAdapter(
         notifyDataSetChanged()
     }
 
+    fun updateSelectedClassroom(selectedId: Int?) {
+        selectedClassroomId = selectedId
+        notifyDataSetChanged()
+    }
+
     override fun onCreateViewHolder(parent: ViewGroup, viewType: Int): ClassroomViewHolder {
         val binding = ItemClassroomBinding.inflate(LayoutInflater.from(parent.context), parent, false)
         return ClassroomViewHolder(binding, onItemClick)

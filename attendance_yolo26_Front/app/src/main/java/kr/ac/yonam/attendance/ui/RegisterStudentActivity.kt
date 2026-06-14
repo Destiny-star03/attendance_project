@@ -431,7 +431,7 @@ class RegisterStudentActivity : AppCompatActivity() {
 
         val pose = currentPose
         val jpegBytes = try {
-            ImageUtil.imageProxyToJpegBytes(imageProxy)
+            ImageUtil.imageProxyToJpegBytes(imageProxy, quality = 90)
         } catch (error: Exception) {
             null
         } finally {
@@ -791,21 +791,21 @@ class RegisterStudentActivity : AppCompatActivity() {
     private fun poseGuide(pose: String): String {
         return when (pose) {
             "front" -> "정면을 바라보세요"
-            "left" -> "얼굴을 왼쪽으로 돌려주세요"
-            "right" -> "얼굴을 오른쪽으로 돌려주세요"
-            "up" -> "얼굴을 위로 들어주세요"
-            "down" -> "얼굴을 아래로 숙여주세요"
+            "left" -> "얼굴을 왼쪽으로 살짝 돌려주세요"
+            "right" -> "얼굴을 오른쪽으로 살짝 돌려주세요"
+            "up" -> "고개를 살짝 들어주세요"
+            "down" -> "고개를 살짝 숙여주세요"
             else -> "정면을 바라보세요"
         }
     }
 
     private fun poseLabel(pose: String): String {
         return when (pose) {
-            "front" -> "front"
-            "left" -> "left"
-            "right" -> "right"
-            "up" -> "up"
-            "down" -> "down"
+            "front" -> "정면"
+            "left" -> "왼쪽"
+            "right" -> "오른쪽"
+            "up" -> "위"
+            "down" -> "아래"
             else -> pose
         }
     }
@@ -872,14 +872,14 @@ class RegisterStudentActivity : AppCompatActivity() {
         const val EXTRA_SERVER_URL = "extra_server_url"
 
         private const val DEFAULT_POSE = "front"
-        private const val INITIAL_CAPTURE_DELAY_MILLIS = 800L
-        private const val AUTO_CAPTURE_INTERVAL_MILLIS = 1000L
-        private const val NO_FACE_RETRY_DELAY_MILLIS = 1400L
-        private const val MULTIPLE_FACES_RETRY_DELAY_MILLIS = 1600L
+        private const val INITIAL_CAPTURE_DELAY_MILLIS = 500L
+        private const val AUTO_CAPTURE_INTERVAL_MILLIS = 600L
+        private const val NO_FACE_RETRY_DELAY_MILLIS = 600L
+        private const val MULTIPLE_FACES_RETRY_DELAY_MILLIS = 900L
         private const val CAPTURING_OVERLAY_DELAY_MILLIS = 350L
-        private const val POSE_ACCEPTED_HOLD_MILLIS = 1000L
+        private const val POSE_ACCEPTED_HOLD_MILLIS = 700L
         private const val COMPLETE_CLOSE_DELAY_MILLIS = 1200L
-        private const val SAME_OVERLAY_THROTTLE_MILLIS = 1000L
+        private const val SAME_OVERLAY_THROTTLE_MILLIS = 600L
 
         private val POSE_ORDER = listOf("front", "left", "right", "up", "down")
     }
